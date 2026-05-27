@@ -1,0 +1,478 @@
+---
+title: "Gateway configuration"
+description: "Configure the WednesdayAI gateway: all settings, their defaults, production impact, and worked examples."
+audience: admin
+---
+
+# Gateway configuration
+
+The gateway reads its configuration from `~/.openclaw/openclaw.json` at startup and watches the file for changes. Most settings apply immediately on save — no restart needed. A small number of settings (port, bind address, TLS, plugins) require a restart; these are noted explicitly in each section.
+
+The config file uses **JSON5** syntax: standard JSON plus comments (`//`, `/* */`) and trailing commas. Unknown keys at the top level cause the gateway to refuse to start. Run `openclaw doctor` to identify unknown or invalid keys before restarting.
+
+## Config file location
+
+| Platform      | Default path                                                                                       |
+| ------------- | -------------------------------------------------------------------------------------------------- |
+| Linux / macOS | `~/.openclaw/openclaw.json`                                                                        |
+| Custom path   | `OPENCLAW_CONFIG_PATH=<absolute-path>` — useful for running multiple gateway instances on one host |
+
+If the file does not exist, the gateway starts with safe defaults. Run `openclaw doctor` to validate the current config at any time.
+
+## Validating and repairing config
+
+```bash
+openclaw doctor          # identify unknown keys, invalid values, missing credentials
+openclaw doctor --fix    # auto-repair common issues (removes unknown keys, fills missing defaults)
+```
+
+`openclaw doctor` is safe to run against a live gateway — it reads the config file but does not modify it unless `--fix` is passed.
+
+## Hot-reload behaviour
+
+The gateway file-watches `~/.openclaw/openclaw.json` in `hybrid` mode by default:
+
+| Mode                   | Behaviour                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| **`hybrid`** (default) | Auto-applies safe changes instantly; automatically restarts for critical changes                  |
+| `hot`                  | Auto-applies safe changes only; logs a warning and **drops** changes that would require a restart |
+| `restart`              | Restarts the gateway on any config change                                                         |
+| `off`                  | Disables file watching; changes take effect on the next manual restart                            |
+
+**What requires a restart:**
+
+| Category                  | Fields                                                                                                                | Restart needed?                    |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Dynamic reads (no action) | `agents`, `routing`, `tools`, `ui`, `logging`, `identity`, `bindings` (see note below for exceptions within `agents`) | No                                 |
+| Hooks                     | `hooks` — triggers in-process hook reload (`reload-hooks` action)                                                     | No (hooks subsystem reloads only)  |
+| Channels                  | `channels.*` — triggers per-channel adapter restart                                                                   | No (channel adapter restarts only) |
+| Session storage           | `session.storage`, `session.storeAdapter`, `session.databaseUrl`                                                      | **Yes**                            |
+| Gateway server            | `gateway.*` — port, bind, auth, tailscale, TLS, HTTP                                                                  | **Yes**                            |
+| Infrastructure            | `discovery`, `canvasHost`, `plugins`                                                                                  | **Yes**                            |
+
+<Note>
+  **Exceptions within `gateway.*`:** `gateway.reload`, `gateway.remote`, and
+  `gateway.channelHealthCheckMinutes` do **not** trigger a full restart. `gateway.reload` and
+  `gateway.remote` are no-ops; `gateway.channelHealthCheckMinutes` triggers an in-process health
+  monitor restart only.
+
+**Exceptions within the `agents` no-op group:** `agents.defaults.heartbeat`,
+`agents.defaults.model`, and the top-level `models` key each trigger an in-process
+`restart-heartbeat` action (not a full gateway restart) to apply the new heartbeat schedule or
+model configuration immediately.
+
+</Note>
+
+To restart the gateway manually on Linux:
+
+```bash
+systemctl --user restart openclaw-gateway.service
+```
+
+---
+
+## Top-level config keys
+
+Each key is optional unless noted. The full reference for every field, enum, and constraint is at [Config reference](/reference/config).
+
+### `identity`
+
+Controls the bot's display name, theme colour, and emoji — cosmetic only.
+
+```json5
+{
+  identity: {
+    name: "WednesdayAI", // display name shown in some channel integrations
+    theme: "default", // web control panel theme
+    emoji: "🤖", // emoji prefix used in some channel replies
+  },
+}
+```
+
+**Default:** `name` unset (shows "OpenClaw"), `theme: "default"`, `emoji: "🤖"`.
+**Restart required:** No.
+
+---
+
+### `agents`
+
+Controls agent workspace location, default model, heartbeat, and automation settings.
+
+```json5
+{
+  agents: {
+    defaults: {
+      workspace: "~/.openclaw/workspace", // where agents store files; use a persistent path in production
+      model: {
+        primary: "anthropic/claude-sonnet-4-5", // provider/model format; pin in production to avoid surprises after provider updates
+      },
+      heartbeat: {
+        every: "60m", // how often the heartbeat fires
+      },
+    },
+  },
+  channels: {
+    defaults: {
+      heartbeat: {
+        showOk: false, // suppress routine "✓ alive" messages in channels — recommended for production
+      },
+    },
+  },
+}
+```
+
+**Default workspace:** `~/.openclaw/workspace`. In production, set this to a persistent volume — not inside a Docker container's ephemeral layer.
+
+**Default model:** Provider's recommended model. Use `provider/model` format (e.g. `"anthropic/claude-sonnet-4-5"`). Omitting the provider prefix is deprecated.
+
+**Restart required:** No. Changes apply on the next agent run.
+
+---
+
+### `channels`
+
+Configures each channel provider. See the [channel setup guides](/admin/channels) for provider-specific credentials and tokens.
+
+```json5
+{
+  channels: {
+    defaults: {
+      groupPolicy: "allowlist", // applies to all channels unless overridden
+    },
+    telegram: {
+      enabled: true,
+      botToken: "<YOUR_TOKEN>",
+      dmPolicy: "pairing", // set per-channel — no cross-channel default for dmPolicy
+    },
+  },
+}
+```
+
+<Note>
+  `channels.defaults` only accepts `groupPolicy` and `heartbeat`. It does **not** accept `dmPolicy`
+  — setting it there will cause the gateway to refuse to start. Configure `dmPolicy` on each channel
+  individually (e.g. `channels.telegram.dmPolicy: "pairing"`).
+</Note>
+
+**DM policies:**
+
+| Policy              | Effect                                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `pairing` (default) | New senders receive a one-time pairing code; must be approved before messages are processed              |
+| `allowlist`         | Only senders in `allowFrom` can message the bot — requires at least one entry in `allowFrom` (see below) |
+| `open`              | All senders accepted without approval — requires `allowFrom: ["*"]` (see below)                          |
+| `disabled`          | DMs not accepted on this channel                                                                         |
+
+Both `dmPolicy: "allowlist"` and `dmPolicy: "open"` require an explicit `allowFrom` key. Without it the gateway refuses to start. For `allowlist`, provide the specific sender IDs; for `open`, use `["*"]`:
+
+```json5
+{
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "<YOUR_TOKEN>",
+      dmPolicy: "allowlist",
+      allowFrom: [123456789], // required when dmPolicy is "allowlist" — at least one sender ID
+    },
+  },
+}
+```
+
+```json5
+{
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "<YOUR_TOKEN>",
+      dmPolicy: "open",
+      allowFrom: ["*"], // required when dmPolicy is "open"
+    },
+  },
+}
+```
+
+<Warning>
+  Setting `dmPolicy: "open"` allows anyone who can reach your bot to send it messages. Only use this
+  on private bots with restricted channel credentials.
+</Warning>
+
+**Group policies:**
+
+`groupPolicy` controls which **senders** are authorized to interact with the bot in group conversations. It does not control which groups the bot is present in — that is managed separately via the `channels.<channel>.groups` allowlist map.
+
+| Policy                | Effect                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `allowlist` (default) | Only senders explicitly in the group allowlist (`channels.<channel>.groups`) can invoke the bot in groups |
+| `open`                | All group members can invoke the bot in any group it has been added to                                    |
+| `disabled`            | Bot ignores all group messages on this channel                                                            |
+
+**Pairing codes:** 8 characters, expire after 1 hour, max 3 pending per channel.
+
+**Restart required:** No. Channel config changes are hot-applied: only the affected channel adapter restarts (in-process), not the gateway. Sessions and connections on other channels are unaffected. Note: some channel providers (e.g. WhatsApp) require re-authentication after credential changes — the adapter will reconnect automatically but you may need to re-link the account.
+
+---
+
+### `gateway.auth`
+
+Controls authentication for the web control panel and gateway API. Auth is configured under `gateway.auth`, not as a top-level key.
+
+<Warning>
+  Do not confuse `gateway.auth` (gateway access control) with the top-level `auth` key — `auth` is
+  the LLM provider credential store (API keys for Anthropic, OpenAI, etc.) and has no effect on
+  gateway authentication.
+</Warning>
+
+```json5
+{
+  gateway: {
+    auth: {
+      mode: "token", // "none" | "token" | "password" | "trusted-proxy"
+      token: "<GENERATE_WITH: openssl rand -hex 32>",
+    },
+  },
+}
+```
+
+**Auth modes:**
+
+| Mode            | Effect                                                          |
+| --------------- | --------------------------------------------------------------- |
+| `none`          | No authentication — only safe for trusted local loopback setups |
+| `token`         | Bearer token required for all API and control UI access         |
+| `password`      | Password-based auth for the control UI                          |
+| `trusted-proxy` | Delegate auth to an identity-aware reverse proxy                |
+
+**Auth mode resolution order** (first match wins):
+
+1. CLI auth mode override (e.g. `--auth-mode` flag) → uses override mode; any generated token is **ephemeral** and not written to config
+2. `gateway.auth.mode` explicitly set in config → uses that mode
+3. `gateway.auth.password` (config) or `OPENCLAW_GATEWAY_PASSWORD` (env) is set and no explicit mode → resolves to `"password"` mode; config value takes precedence over env var
+4. `gateway.auth.token` (config) or `OPENCLAW_GATEWAY_TOKEN` (env) is set and no explicit mode → resolves to `"token"` mode; config value takes precedence over env var
+5. Neither password nor token set (in config or env) → resolves to `"token"` and auto-generates a 48-character token
+
+**Auto-generated token persistence:** When the gateway auto-generates a token (step 5 above) and was started via the normal startup path (no CLI auth mode override), the generated token is **saved to `~/.openclaw/openclaw.json`** and reused across restarts. If started with a CLI auth mode override, the generated token is ephemeral — it is not written to config and changes each restart.
+
+Always set an explicit `token` value rather than relying on the auto-generated one — it keeps your config auditable and prevents surprises if the file is ever reset. Use `mode: "none"` only when you explicitly want to disable auth on a trusted local loopback setup.
+
+<Note>
+  **Token rotation:** Clearing `gateway.auth.token` from the config file is not sufficient to force
+  token regeneration if `OPENCLAW_GATEWAY_TOKEN` is set in the process environment (e.g. via a
+  systemd `EnvironmentFile`). The env var satisfies step 4 and prevents auto-generation. To rotate
+  the token, update or remove the env var as well.
+</Note>
+
+<Warning>
+  An unauthenticated gateway exposed to the network accepts tool executions and session reads from
+  anyone who can reach the port. Set `gateway.auth.mode: "token"` before enabling remote access or
+  changing `gateway.bind` from `"loopback"`.
+</Warning>
+
+**Restart required:** Yes — `gateway.auth` changes fall under the `gateway.*` restart rule.
+
+In `hybrid` mode (the default), saving the config file **automatically triggers a gateway restart** — no manual action needed. Be aware that saving an auth config change (such as a token rotation) will immediately restart the gateway and drop active sessions.
+
+In `hot` mode, the restart is logged as a warning but **not** applied automatically. Restart manually:
+
+```bash
+systemctl --user restart openclaw-gateway.service
+```
+
+---
+
+### `tools`
+
+Controls which tools are available to agents, and agent-level sandbox execution mode.
+
+```json5
+{
+  tools: {
+    allow: ["group:openclaw"], // tools available to all agents by default
+    deny: [], // tools blocked for all agents
+  },
+  agents: {
+    defaults: {
+      sandbox: {
+        mode: "off", // "off" | "non-main" | "all" — Docker-based sandbox mode
+      },
+    },
+  },
+}
+```
+
+**Tool allowlists:** `group:openclaw` includes all built-in tools. Use individual tool names or group names to restrict or expand access.
+
+**Sandbox modes** (Docker-based execution isolation — requires Docker):
+
+| Mode            | Effect                                           |
+| --------------- | ------------------------------------------------ |
+| `off` (default) | No sandboxing — tools run in the gateway process |
+| `non-main`      | Sandboxes all agents except the main agent       |
+| `all`           | Sandboxes all agents including main              |
+
+<Warning>
+  When `sandbox.mode` is `off` (the default), tool code runs with the same permissions as the
+  gateway process. Install only plugins you trust.
+</Warning>
+
+**Restart required:** No. Applies on the next agent run.
+
+---
+
+### `gateway`
+
+Controls the gateway's network binding, port, and server-level settings.
+
+```json5
+{
+  gateway: {
+    port: 18789, // default: 18789
+    bind: "loopback", // default: "loopback" (127.0.0.1 only)
+    reload: {
+      mode: "hybrid", // default: "hybrid"
+      debounceMs: 300,
+    },
+  },
+}
+```
+
+**Default port:** `18789`.
+
+**Bind modes:**
+
+| Mode                 | Effect                                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `loopback` (default) | Listens on 127.0.0.1 only — not reachable from outside the host; falls back to 0.0.0.0 in extreme cases where 127.0.0.1 cannot bind (e.g. some container environments)                                 |
+| `lan`                | Binds to all network interfaces (0.0.0.0) — reachable from any host that can reach the machine, including the internet if exposed via a public NIC; no fallback                                        |
+| `auto`               | Tries loopback (127.0.0.1) first; falls back to all interfaces (0.0.0.0) if loopback is unavailable                                                                                                    |
+| `tailnet`            | Tries the Tailscale interface; falls back to 127.0.0.1 if no Tailscale IP is available or the Tailscale bind fails, then 0.0.0.0 if loopback also cannot bind — **does not fail if Tailscale is down** |
+| `custom`             | Specify a custom bind address via `gateway.customBindHost` — if the specified host is unavailable at startup, the gateway falls back to all interfaces (0.0.0.0)                                       |
+
+In production, keep `bind: "loopback"` and use a reverse proxy (nginx, Caddy, Tailscale) for external access rather than using `"lan"` directly.
+
+**Restart required:** Yes — port and bind changes require a restart. In `hybrid` mode (the default), the restart is automatic when the config file is saved.
+
+In `hot` mode, restart manually:
+
+```bash
+systemctl --user restart openclaw-gateway.service
+```
+
+<Warning>
+  `bind: "lan"` binds to `0.0.0.0` — all network interfaces. On a VPS or cloud instance this
+  includes any public NIC, directly exposing the gateway to the internet. `bind: "auto"` falls back
+  to `0.0.0.0` if loopback is unavailable and has the same exposure. Always set `gateway.auth.mode:
+  "token"` and add firewall rules to restrict inbound access to the gateway port before using either
+  mode.
+</Warning>
+
+<Warning>
+  The `loopback`, `tailnet`, and `custom` bind modes all fall back to `0.0.0.0` (all interfaces) if
+  the intended bind target is unavailable at startup — `loopback` if 127.0.0.1 cannot bind (rare,
+  but possible in some container environments), `tailnet` if no Tailscale IP is detectable or the
+  Tailscale bind fails, and then loopback also fails, `custom` if `gateway.customBindHost` is
+  unavailable. In all cases the gateway starts without error. Always verify the listening address
+  with `ss -tlnp | grep 18789` after startup if you rely on restricted binding.
+</Warning>
+
+---
+
+## Recommended configurations
+
+### Minimal / development
+
+Single user, local machine, no remote access needed.
+
+```json5
+{
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "<YOUR_TOKEN>",
+    },
+    defaults: {
+      heartbeat: { showOk: false },
+    },
+  },
+}
+```
+
+### Production — single instance
+
+VPS or cloud instance serving a small team.
+
+```json5
+{
+  identity: {
+    name: "WednesdayAI",
+  },
+  agents: {
+    defaults: {
+      workspace: "/var/openclaw/workspace",
+      model: { primary: "anthropic/claude-sonnet-4-5" },
+      heartbeat: { every: "60m" },
+    },
+  },
+  channels: {
+    defaults: {
+      groupPolicy: "allowlist",
+      heartbeat: { showOk: false },
+    },
+    telegram: {
+      enabled: true,
+      botToken: "<YOUR_TOKEN>",
+      dmPolicy: "pairing", // configure dmPolicy per-channel, not under channels.defaults
+    },
+  },
+  gateway: {
+    port: 18789,
+    bind: "loopback", // expose via reverse proxy, not directly
+    auth: {
+      mode: "token",
+      token: "<openssl rand -hex 32>",
+    },
+    reload: { mode: "hybrid" },
+  },
+}
+```
+
+### Production — multi-gateway
+
+See [Multi-gateway setup](/admin/multi-gateway) for routing multiple gateway instances and using `OPENCLAW_CONFIG_PATH` for per-instance config files.
+
+---
+
+## Troubleshooting
+
+**Gateway refuses to start after a config change**
+
+Run `openclaw doctor` — the most common causes are an unknown key or invalid enum value. Check for:
+
+- Unknown keys inside `channels.defaults` (only `groupPolicy` and `heartbeat` are accepted — unknown keys cause a startup failure)
+- A `dmPolicy` or `groupPolicy` value not in the allowed enum
+- A string value where a number is expected (e.g. `port: "18789"` instead of `port: 18789`)
+
+Note: unknown channel _provider_ names at the top level of `channels` (e.g. `channels.mychanel_typo`) are silently ignored, not rejected. If a channel isn't loading, check its name against the [channel setup guides](/admin/channels).
+
+**Hot-reload not picking up changes**
+
+- Confirm the gateway process is running: `systemctl --user status openclaw-gateway.service`
+- Check for config validation errors — an invalid config (bad syntax, unknown key, wrong type) is silently skipped with only a log warning. Run `openclaw doctor` or check logs: `journalctl --user -u openclaw-gateway -f`
+- If your text editor writes files atomically (rename-on-save), the file watcher may have lost the inode — restart the gateway
+
+**Changes to `gateway.port` or `gateway.bind` don't take effect**
+
+In `hybrid` mode (the default), port and bind changes trigger an **automatic** gateway restart — no manual action needed. If the restart didn't happen, check logs to see if the auto-restart failed:
+
+```bash
+journalctl --user -u openclaw-gateway -f
+```
+
+In `hot` mode, port/bind changes are logged as a warning but **not** applied. You must restart manually:
+
+```bash
+systemctl --user restart openclaw-gateway.service
+```
+
+---
+
+**Related:** [Authentication](/admin/gateway/authentication) · [Logging](/admin/gateway/logging) · [Health checks](/admin/gateway/health-checks) · [Config reference](/reference/config) · [Multi-gateway](/admin/multi-gateway)

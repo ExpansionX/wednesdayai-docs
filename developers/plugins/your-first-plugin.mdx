@@ -1,0 +1,288 @@
+---
+title: "Write your first plugin"
+description: "Build a WednesdayAI plugin that adds a new agent tool — from scaffolding to a working local install."
+audience: developer
+---
+
+# Write your first plugin
+
+WednesdayAI's core is intentionally small. Features that are specific to a use case, platform, or workflow belong in plugins — not in core. This keeps the core stable and the system extensible without requiring a fork.
+
+A plugin is a Node.js package that registers one or more of the following via the plugin SDK:
+
+- **Agent tools** — actions the AI can invoke during a conversation
+- **Hooks** — lifecycle callbacks (transform inputs, capture outputs, react to events)
+- **Channel adapters** — new chat platform integrations
+- **HTTP routes** — custom endpoints on the gateway
+
+This guide builds a plugin with one agent tool. It covers the manifest, the SDK surface, async safety, optional tools, config schema, and local testing.
+
+## Prerequisites
+
+- Node.js ≥ 22.12.0
+- A running WednesdayAI instance for testing
+- TypeScript familiarity — the plugin SDK is fully typed
+
+## Extension points overview
+
+Before writing code, understand where plugins touch the system:
+
+| Extension point | What it owns                                                     | SDK type                |
+| --------------- | ---------------------------------------------------------------- | ----------------------- |
+| Agent tool      | An action the AI can call (search, fetch, compute)               | `AnyAgentTool`          |
+| Hook            | A lifecycle callback (before/after LLM call, context collection) | `PluginHook*`           |
+| Channel adapter | A new chat platform                                              | `ChannelPlugin`         |
+| HTTP route      | A custom endpoint on the gateway                                 | `GatewayRequestHandler` |
+
+Each is registered via a corresponding `api.register*()` method on the `OpenClawPluginApi` object passed to your `register` function.
+
+## Step 1: Scaffold the plugin
+
+Create a directory for your plugin. The directory name must match the plugin `id` exactly.
+
+```bash
+mkdir my-tool
+cd my-tool
+npm init -y
+npm install --save-dev typescript @types/node
+npm install --save-dev openclaw@2026.3.2   # pin to the WednesdayAI fork base version
+```
+
+Add `"type": "module"` to `package.json` — the plugin SDK uses ESM:
+
+```json
+{
+  "name": "my-tool",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js"
+}
+```
+
+Create `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "outDir": "dist",
+    "declaration": true
+  },
+  "include": ["src"]
+}
+```
+
+## Step 2: Write the manifest
+
+Create `openclaw.plugin.json` at the plugin root. This file is **required** — the runtime will not load the plugin without it.
+
+The manifest is plain JSON (not JSON5):
+
+```json
+{
+  "id": "my-tool",
+  "name": "My Tool",
+  "description": "A plugin that adds a custom agent tool",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "API key for the external service"
+      }
+    },
+    "required": ["apiKey"]
+  },
+  "uiHints": {
+    "apiKey": {
+      "label": "API Key",
+      "sensitive": true
+    }
+  }
+}
+```
+
+**Key rules:**
+
+- `id` must match the directory name exactly.
+- `configSchema` is required. If your plugin has no config, use `{ "type": "object", "additionalProperties": false }`.
+- `additionalProperties: false` ensures typos in user config are caught, not silently ignored.
+- The manifest is plain JSON — do not add comments or trailing commas.
+- Declaring a field in `required` means the runtime rejects the plugin config at load time if the field is absent. If you also guard for a missing value inside `execute()`, that guard is belt-and-suspenders for deployments where config validation may be bypassed (e.g. direct API calls). Both are fine to have together.
+
+## Step 3: Write the plugin entry point
+
+The plugin's entry exports a default `register` function. This function is called by the runtime when the plugin is loaded.
+
+Create `src/index.ts`:
+
+```typescript
+import { Type } from "@sinclair/typebox";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+
+export default function register(api: OpenClawPluginApi): void {
+  api.registerTool({
+    name: "my_tool",
+    description: "Describe what this tool does — the AI reads this to decide when to call it.",
+    parameters: Type.Object({
+      query: Type.String({ description: "The input to process" }),
+    }),
+    async execute(_id, params) {
+      const result = `Processed: ${params.query}`;
+      return {
+        content: [{ type: "text", text: result }],
+      };
+    },
+  });
+}
+```
+
+**Points to note:**
+
+- Import from `openclaw/plugin-sdk`, not from relative paths into core. Relative core imports (`../../src/...`) work in bundled extensions but break in installed plugins.
+- Tool names are not deduplicated at registration time. If two tools share a name, both are registered and runtime resolution order determines which is called. Use a unique, namespaced name (e.g. `my-plugin_my_tool`) to avoid conflicts.
+
+## Async safety
+
+<Warning>
+  The `register()` function is called at startup. Any long-running blocking operation inside it
+  delays gateway readiness.
+</Warning>
+
+The `register` function may be synchronous or async. Use async if you need to perform startup I/O (reading a config file, pinging an API). The key constraint is: don't block indefinitely.
+
+**Tool `execute()` functions are always async** and run when the AI decides to call the tool. A slow `execute()` does not block the gateway — but it does block the user's reply until it completes.
+
+**Do not do this:**
+
+```typescript
+export default function register(api: OpenClawPluginApi): void {
+  // ❌ Synchronous I/O blocks the event loop during startup
+  const config = JSON.parse(fs.readFileSync("./data.json", "utf8"));
+  api.registerTool({ ... });
+}
+```
+
+**Do this instead:**
+
+```typescript
+export default async function register(api: OpenClawPluginApi): Promise<void> {
+  // ✅ Async I/O during startup — does not block the event loop
+  const config = JSON.parse(await fs.promises.readFile("./data.json", "utf8"));
+  api.registerTool({ ... });
+}
+```
+
+**For long-running tool operations:** Return a progress message immediately if the tool makes a network request that could take more than a few seconds. Set user expectations in the tool `description` field.
+
+## Step 4: Register as optional
+
+By default, registered tools are available to all agents. If your tool is not universally useful (makes outbound network requests, uses a paid API, has side effects), register it as optional:
+
+```typescript
+api.registerTool(
+  {
+    name: "my_tool",
+    description: "...",
+    parameters: Type.Object({ query: Type.String() }),
+    async execute(_id, params) {
+      /* ... */
+    },
+  },
+  { optional: true }, // ← user must explicitly enable this tool
+);
+```
+
+Users enable an optional tool via the top-level `tools.allow` key in their WednesdayAI config:
+
+```json5
+{
+  tools: {
+    allow: ["my_tool"],
+  },
+}
+```
+
+<Tip>
+  Mark tools as optional whenever they make outbound requests, use credentials, or have meaningful
+  side effects. This gives operators explicit control over what the AI can do.
+</Tip>
+
+## Step 5: Access plugin config in execute
+
+If your manifest declares a `configSchema`, users set values under the plugin's `id` in their WednesdayAI config. The config is available on the `api` object passed to `register`. Capture it in a closure so `execute()` can access it:
+
+```typescript
+export default function register(api: OpenClawPluginApi): void {
+  // api.pluginConfig is Record<string, unknown> | undefined
+  const pluginConfig = api.pluginConfig;
+
+  api.registerTool({
+    name: "my_tool",
+    description: "...",
+    parameters: Type.Object({ query: Type.String() }),
+    async execute(_id, params) {
+      const apiKey = pluginConfig?.apiKey as string | undefined;
+      if (!apiKey) {
+        return {
+          content: [{ type: "text", text: "Plugin not configured: apiKey is missing." }],
+        };
+      }
+      // use apiKey ...
+      return { content: [{ type: "text", text: `Done: ${params.query}` }] };
+    },
+  });
+}
+```
+
+Always handle missing config gracefully — return a helpful message rather than throwing.
+
+## Step 6: Build and install locally
+
+```bash
+# Build
+npx tsc
+
+# Pack
+npm pack
+# Produces: my-tool-1.0.0.tgz
+
+# Install into WednesdayAI
+openclaw plugins install ./my-tool-1.0.0.tgz
+
+# Verify it loaded
+openclaw plugins list
+```
+
+Expected output from `openclaw plugins list`:
+
+```text
+my-tool  1.0.0  ✓ loaded
+```
+
+## Step 7: Test it
+
+Send a message to your WednesdayAI bot that should invoke the tool. If you registered it as optional, first add `"my_tool"` to `tools.allow` in your WednesdayAI config (see Step 4).
+
+To watch tool calls in the logs on Linux:
+
+```bash
+journalctl --user -u openclaw-gateway -f | grep my_tool
+```
+
+Expected: a log line showing the tool being called with your params and a successful return.
+
+---
+
+## What's next
+
+- [Plugin manifest reference](/reference/plugin-manifest) — all manifest fields and their effects
+- [Plugin SDK reference](/reference/plugin-sdk) — full exported surface with types
+- [Writing a hook](/developers/hooks) — lifecycle callbacks for context, LLM input/output, and model call events
+- [Writing a channel adapter](/developers/channel-adapters) — add a new chat platform
+- [Publishing a plugin](/developers/plugins/publishing) — how the managed plugin lifecycle works

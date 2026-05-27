@@ -1,0 +1,96 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "WednesdayAI",
+  "description": "The AI platform that stays yours. Documentation for administrators, users, and developers.",
+  "theme": "mint",
+  "icons": { "library": "lucide" },
+  "logo": {
+    "light": "/assets/logo-light.svg",
+    "dark": "/assets/logo-dark.svg"
+  },
+  "fonts": {
+    "heading": { "family": "DM Sans" },
+    "body": { "family": "DM Sans" }
+  },
+  "favicon": "/assets/favicon.svg",
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4f46e5",
+    "background": { "dark": "#0f172a" }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": { "dark": "min-dark", "light": "min-light" }
+    }
+  },
+  "navbar": {
+    "links": [
+      { "label": "GitHub", "href": "https://github.com/ExpansionX/WednesdayAI-core", "icon": "github" },
+      { "label": "Discord", "href": "https://discord.gg/wednesdayai", "icon": "discord" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get started",
+      "href": "/admin/getting-started"
+    }
+  },
+  "tabs": [
+    { "tab": "Administrators", "url": "admin" },
+    { "tab": "Users", "url": "users" },
+    { "tab": "Developers", "url": "developers" }
+  ],
+  "anchors": [
+    { "name": "Reference", "icon": "book-open", "url": "reference" },
+    { "name": "Changelog", "icon": "megaphone", "url": "https://github.com/ExpansionX/WednesdayAI-core/blob/main/CHANGELOG.md" },
+    { "name": "GitHub", "icon": "github", "url": "https://github.com/ExpansionX/WednesdayAI-core" }
+  ],
+  "navigation": [
+    {
+      "tab": "Administrators",
+      "groups": [
+        { "group": "Getting started", "pages": ["admin/getting-started"] },
+        {
+          "group": "Gateway configuration",
+          "pages": [
+            "admin/gateway/configuration",
+            "admin/gateway/authentication",
+            "admin/gateway/remote-access",
+            "admin/gateway/logging",
+            "admin/gateway/health-checks"
+          ]
+        },
+        { "group": "Channels", "pages": ["admin/channels/index"] },
+        { "group": "Security", "pages": ["admin/security"] },
+        { "group": "Maintenance", "pages": ["admin/upgrading", "admin/troubleshooting"] }
+      ]
+    },
+    {
+      "tab": "Users",
+      "groups": [
+        { "group": "Getting started", "pages": ["users/what-is-wednesdayai", "users/pairing/first-channel"] },
+        { "group": "Talking to your AI", "pages": ["users/messaging", "users/commands"] },
+        { "group": "Built-in tools", "pages": ["users/tools/index"] },
+        { "group": "Help", "pages": ["users/troubleshooting"] }
+      ]
+    },
+    {
+      "tab": "Developers",
+      "groups": [
+        { "group": "Getting started", "pages": ["developers/overview", "developers/plugins/your-first-plugin"] },
+        { "group": "Extension points", "pages": ["developers/hooks", "developers/channel-adapters", "developers/agent-tools"] },
+        { "group": "SDK reference", "pages": ["developers/sdk/index"] },
+        { "group": "Contributing", "pages": ["developers/contributing"] }
+      ]
+    },
+    {
+      "tab": "Reference",
+      "groups": [
+        { "group": "Reference", "pages": ["reference/config", "reference/cli", "reference/hooks-catalogue", "reference/api"] }
+      ]
+    }
+  ],
+  "feedback": { "thumbsRating": true, "suggestEdit": true, "raiseIssue": true },
+  "search": { "prompt": "Search WednesdayAI docs..." },
+  "seo": { "indexHiddenPages": false }
+}
