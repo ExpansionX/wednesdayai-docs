@@ -1,0 +1,89 @@
+---
+title: "AI providers"
+description: "Connect WednesdayAI to Claude, GPT-4, Gemini, local models via Ollama, and OpenRouter — one gateway, any model."
+audience: admin
+---
+
+# AI providers
+
+WednesdayAI routes your conversations to any supported AI provider. You choose the model; the gateway handles authentication, retries, and response streaming.
+
+## Supported providers
+
+<CardGroup cols={2}>
+  <Card title="Anthropic" href="/developers/providers/anthropic" icon="sparkles">
+    Claude models — Sonnet, Opus, Haiku. Supports thinking mode and prompt caching.
+  </Card>
+  <Card title="OpenAI" href="/developers/providers/openai" icon="bot">
+    GPT-4, o3, and the Codex family. Standard API key or Codex subscription OAuth.
+  </Card>
+  <Card title="Google" href="/developers/providers/google" icon="google">
+    Gemini models via Vertex AI or the AI Studio API key.
+  </Card>
+  <Card title="Ollama" href="/developers/providers/ollama" icon="server">
+    Run any model locally — Llama, Mistral, Qwen, and hundreds more.
+  </Card>
+  <Card title="OpenRouter" href="/developers/providers/openrouter" icon="shuffle">
+    Unified API gateway. Access 200+ models from a single API key with automatic fallback.
+  </Card>
+  <Card title="LiteLLM / Bifrost" href="/developers/providers/litellm" icon="network">
+    Proxy-based providers. Route through your own LiteLLM or Bifrost deployment.
+  </Card>
+</CardGroup>
+
+## Adding a provider
+
+Use `openclaw login` to authenticate with a provider interactively:
+
+```bash
+openclaw login
+```
+
+The wizard prompts you to choose a provider and enter your credentials. You can add as many providers as you like — each becomes an available option in the gateway config.
+
+To authenticate non-interactively (for CI or servers), set the environment variable before starting the gateway:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+openclaw gateway start
+```
+
+Environment variables take precedence over stored credentials. See each provider page for the exact variable name.
+
+## Routing requests to a provider
+
+In `~/.openclaw/openclaw.json`, set the default model:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: "claude-sonnet-4-6",  // or "gpt-4o", "gemini-2.0-flash", "ollama/llama3.3", etc.
+    }
+  }
+}
+```
+
+To change the model for the current conversation, use the `/model` command in chat:
+
+```
+/model gpt-4o
+```
+
+## Multi-provider routing
+
+You can configure routing rules that send specific agents or channels to different providers. See the [Gateway configuration](/admin/gateway/configuration) page for the routing table syntax.
+
+## Checking provider status
+
+```bash
+openclaw doctor
+```
+
+`openclaw doctor` validates credentials for every configured provider and reports which ones are reachable.
+
+```bash
+openclaw status --providers
+```
+
+Lists all authenticated providers and the models available from each.

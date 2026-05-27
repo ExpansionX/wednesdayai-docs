@@ -1,157 +1,49 @@
 ---
 title: "Pair your first channel"
-description: "Connect WednesdayAI to Telegram in under five minutes — no technical experience needed."
+description: "Connect WednesdayAI to your preferred messaging app so you can start chatting with your AI."
 audience: user
 ---
 
 # Pair your first channel
 
-Pairing connects WednesdayAI to a chat app so you can talk to it there. Once paired, you send messages in your normal chat app and WednesdayAI replies — no separate interface needed.
+WednesdayAI works inside the apps you already use. This guide walks you through connecting your first messaging app.
 
-This guide uses **Telegram**. It's the fastest channel to set up and works on every platform. If you want to connect a different app (WhatsApp, Discord, iMessage, Slack), the process is the same idea — see [other channels](/users/pairing) once you've done this one.
+## Choose your app
 
-**Before you start:** WednesdayAI needs to already be installed and running. If you're not sure, ask the person who set it up.
+<CardGroup cols={2}>
+  <Card title="WhatsApp" href="/users/pairing/whatsapp" icon="message-circle">
+    The most popular option. Scan a QR code — no phone number required.
+  </Card>
+  <Card title="Telegram" href="/users/pairing/telegram" icon="send">
+    Fast and reliable. Message the bot your administrator set up.
+  </Card>
+  <Card title="Discord" href="/users/pairing/discord" icon="discord">
+    Chat with your AI in a Discord server or via DM.
+  </Card>
+  <Card title="iMessage" href="/users/pairing/imessage" icon="message">
+    macOS and iPhone users — pair directly via the Messages app.
+  </Card>
+</CardGroup>
 
----
+## What "pairing" means
 
-## What you need
+When you pair a channel, WednesdayAI learns to recognise messages from you on that channel and route your conversations to your AI. It is a one-time setup step.
 
-- A Telegram account — free, on your phone or desktop at [telegram.org](https://telegram.org)
-- About 5 minutes
+After pairing:
+- Your messages in the channel reach your AI instantly
+- Your conversation history is private to you
+- You can use all [slash commands](/users/commands) and [built-in tools](/users/tools/index)
 
----
+## Before you start
 
-## Step 1: Create a Telegram bot
+Make sure your administrator has already set up the WednesdayAI gateway and the channel you want to use. If you are not sure, send a message to your administrator or check the [admin docs](/admin/channels/index).
 
-WednesdayAI works through a Telegram bot that you own. Creating one is free and takes about 2 minutes.
+## After pairing
 
-<Steps>
+Once connected, send a message to your AI to say hello. Try:
 
-### Open Telegram and find BotFather
+> "Hi! What can you do?"
 
-Search for `@BotFather` in Telegram — exactly that, with a capital B and capital F. Open it. It will have a blue verified checkmark.
+Your AI will introduce itself and describe what it can help with.
 
-### Start a new bot
-
-Send the message `/newbot` to BotFather.
-
-BotFather will ask for a **name** for your bot — this is the display name people will see. Type anything you like (for example: `My Assistant`).
-
-### Pick a username
-
-BotFather will ask for a **username**. This must end in `bot` — for example, `myassistant_bot`. Pick something unique.
-
-**You should see:** BotFather sends back a message with a token — a long string that looks like `123456789:ABCdefGHIjklmnoPQRstuvwxyz`. Copy this whole string. You'll need it in the next step.
-
-<Warning>
-  Keep this token private. Anyone who has it can control your bot. Don't share it in a chat or paste
-  it publicly.
-</Warning>
-
-</Steps>
-
----
-
-## Step 2: Give the token to WednesdayAI
-
-<Steps>
-
-### Run the setup command
-
-On the computer running WednesdayAI, run:
-
-```bash
-openclaw config set channels.telegram.botToken "PASTE_YOUR_TOKEN_HERE"
-openclaw config set channels.telegram.enabled true
-```
-
-Replace `PASTE_YOUR_TOKEN_HERE` with the token from BotFather — include everything: the numbers, the colon, and the letters after it.
-
-**You should see:** A confirmation message. WednesdayAI picks up the change automatically — no restart needed.
-
-<Tip>
-  If you have access to the WednesdayAI config file (`~/.openclaw/openclaw.json`), you can also edit
-  it directly. Either way works.
-</Tip>
-
-</Steps>
-
----
-
-## Step 3: Send your first message and get approved
-
-<Steps>
-
-### Find your bot in Telegram
-
-Search for your bot's username in Telegram (for example, `@myassistant_bot`). Open it.
-
-### Send any message
-
-Type anything and send it — for example, `hello`.
-
-**You should see:** The bot replies with a short code (8 characters, like `AB23CD45`) and a message saying your request is waiting for approval. This code expires in 1 hour.
-
-### Approve yourself
-
-On the computer running WednesdayAI, run:
-
-```bash
-openclaw pairing list telegram
-```
-
-You'll see your pairing request in the list. Copy the code, then approve it:
-
-```bash
-openclaw pairing approve telegram AB23CD45
-```
-
-(Replace `AB23CD45` with your actual code.)
-
-### Send another message
-
-Go back to Telegram and send the bot another message.
-
-**You should see:** WednesdayAI replies! You're paired and ready to go.
-
-</Steps>
-
----
-
-## Try it out
-
-Now that you're paired, you can start using WednesdayAI:
-
-- Ask a question: `What's the capital of France?`
-- Ask for help: `Help me write a short email to reschedule a meeting`
-- See what it can do: send `/tools`
-
----
-
-## Troubleshooting
-
-**The bot doesn't respond to my first message**
-
-Check that your token is correct in the config file — no extra spaces, and it includes the full token including the numbers before the colon (e.g. `123456789:ABC...`). Also confirm WednesdayAI is running.
-
-**My pairing code expired before I could approve it**
-
-Codes expire after 1 hour. Just send the bot another message — it will issue a new code. Approve it right away.
-
-**The bot replies in direct messages but not in a group chat**
-
-By default, WednesdayAI only responds in groups that have been explicitly added by the person who manages it. Ask them to add your group, or to enable `@mention` mode so the bot responds when you tag it.
-
-There's also a Telegram setting called **Privacy Mode** that limits what group messages bots receive. If the bot can't see group messages at all, the person who manages WednesdayAI may need to disable Privacy Mode for the bot via `@BotFather` → `/setprivacy`.
-
-**I can't find my bot when I search for its username**
-
-Telegram usernames are case-sensitive in some clients. Try searching without the `@` symbol. Also confirm the username ends in `bot`.
-
----
-
-## What's next
-
-- [Connect another channel](/users/pairing) — WhatsApp, Discord, iMessage, Slack, and more
-- [What WednesdayAI can do](/users/tools) — the built-in tools and how to use them
-- [Talking to WednesdayAI](/users/talking) — commands, media, and what to expect
+To pair a second channel later, follow the same steps for that channel. Your conversation history and settings carry over.

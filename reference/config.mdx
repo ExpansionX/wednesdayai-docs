@@ -1,9 +1,436 @@
 ---
-title: "Configuration reference"
-description: "Every configuration key, its default value, and its effect."
+title: "Gateway configuration reference"
+sidebarTitle: "Config reference"
+description: "Every configuration key for the WednesdayAI gateway: defaults, restart requirements, and worked examples."
 audience: admin
 ---
 
-# Configuration reference
+# Gateway configuration reference
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI reads its configuration from `~/.openclaw/openclaw.json` at startup. The file uses **JSON5** syntax: standard JSON plus `//` comments and trailing commas. Unknown top-level keys cause the gateway to refuse to start — run `openclaw doctor` to identify and remove them.
+
+If the file does not exist, the gateway starts with safe defaults. The only root-level exception to unknown-key rejection is `$schema` (a string value).
+
+## Editing configuration
+
+Four ways to edit config:
+
+| Method | Use when |
+| ------ | -------- |
+| `openclaw onboard` / `openclaw configure` | Interactive wizard for guided setup |
+| `openclaw config get\|set\|unset` | One-off CLI changes |
+| Control panel Config tab (`http://localhost:18789/`) | Browser-based editing with raw JSON escape hatch |
+| Direct file edit | Scripted or bulk changes — gateway hot-reloads automatically |
+
+## Validation and repair
+
+```bash
+openclaw doctor          # identify unknown keys, invalid values
+openclaw doctor --fix    # apply repairs, remove unknown keys (backs up first)
+```
+
+When validation fails: only `openclaw doctor`, `openclaw logs`, `openclaw health`, and `openclaw status` work until the config is fixed.
+
+## Hot reload
+
+The gateway watches the config file and applies most changes without a restart:
+
+| Setting | Behavior |
+| ------- | -------- |
+| `gateway.reload.mode = "hybrid"` | Hot-apply safe changes; auto-restart for server-level changes (default) |
+| `gateway.reload.mode = "hot"` | Hot-apply only; logs a warning when a restart is needed |
+| `gateway.reload.mode = "restart"` | Restart on any config change |
+| `gateway.reload.mode = "off"` | Manual restarts only |
+
+**Hot-reload without restart:** `channels.*`, `agents.*`, `models`, `routing`, `hooks`, `cron`, `session`, `messages`, `tools`, `browser`, `skills`, `audio`, `logging`, `ui`, `bindings`
+
+**Requires restart:** `gateway.*` (port, bind address, auth, TLS, tailscale), `discovery`, `canvasHost`, `plugins`
+
+Configure reload behavior:
+```json5
+{
+  gateway: {
+    reload: { mode: "hybrid", debounceMs: 300 },
+  },
+}
+```
+
+## Environment variables
+
+The gateway reads env vars from:
+1. Parent process environment
+2. `.env` in the current working directory (if present)
+3. `~/.openclaw/.env` (global fallback)
+
+Neither file overrides existing env vars. Inline env vars in config are also supported:
+
+```json5
+{
+  env: {
+    OPENROUTER_API_KEY: "sk-or-...",
+    vars: { GROQ_API_KEY: "gsk-..." },
+  },
+}
+```
+
+**Env var substitution in config values** via `${VAR_NAME}`:
+- Only uppercase names matched: `[A-Z_][A-Z0-9_]*`
+- Missing or empty vars throw an error at load time
+- Escape with `$${VAR}` for literal `${VAR}` output
+
+**Shell env import** (optional — imports missing vars from login shell):
+```json5
+{ env: { shellEnv: { enabled: true, timeoutMs: 15000 } } }
+```
+Or: `OPENCLAW_LOAD_SHELL_ENV=1`
+
+## Split config with `$include`
+
+```json5
+// ~/.openclaw/openclaw.json
+{
+  gateway: { port: 18789 },
+  agents: { $include: "./agents.json5" },
+  broadcast: { $include: ["./clients/a.json5", "./clients/b.json5"] },
+}
+```
+
+- Single file: replaces the containing object
+- Array of files: deep-merged in order (later wins)
+- Sibling keys: merged after includes (override included values)
+- Nested includes: supported up to 10 levels deep
+- Relative paths: resolved relative to the including file
+
+---
+
+## `gateway` — Server settings
+
+```json5
+{
+  gateway: {
+    port: 18789,                  // TCP port (restart required)
+    bind: "loopback",             // loopback | lan | tailnet | custom (restart required)
+    auth: {
+      mode: "token",              // token | password | trusted-proxy | none
+      token: "...",               // or OPENCLAW_GATEWAY_TOKEN env var
+      password: "...",            // or OPENCLAW_GATEWAY_PASSWORD env var
+    },
+    tailscale: { mode: "off" },   // off | serve | funnel (restart required)
+    reload: { mode: "hybrid", debounceMs: 300 },
+  },
+}
+```
+
+| Key | Default | Restart? |
+| --- | ------- | -------- |
+| `gateway.port` | `18789` | Yes |
+| `gateway.bind` | `"loopback"` | Yes |
+| `gateway.auth.mode` | `"token"` | Yes |
+| `gateway.tailscale.mode` | `"off"` | Yes |
+| `gateway.reload.mode` | `"hybrid"` | No |
+
+**Non-loopback `bind` requires auth.** The gateway refuses to start with `bind: "lan"`, `"tailnet"`, or `"custom"` if no token or password is set.
+
+---
+
+## `agents` — Agent and model configuration
+
+```json5
+{
+  agents: {
+    defaults: {
+      workspace: "~/.openclaw/workspace",
+      model: {
+        primary: "anthropic/claude-sonnet-4-5",
+        fallbacks: ["openai/gpt-4o"],
+      },
+      models: {
+        "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
+        "openai/gpt-4o": { alias: "GPT" },
+      },
+      imageMaxDimensionPx: 1200,    // auto-downscale images before sending to model
+      sandbox: {
+        mode: "off",                // off | non-main | all
+        scope: "agent",             // session | agent | shared
+      },
+      heartbeat: {
+        every: "0m",                // "30m", "2h", etc. — "0m" disables
+        target: "last",             // last | whatsapp | telegram | discord | none
+      },
+    },
+    list: [
+      { id: "default", default: true, workspace: "~/.openclaw/workspace" },
+    ],
+  },
+}
+```
+
+Model refs use `provider/model` format. `agents.defaults.models` defines the model catalog and acts as the allowlist for `/model`.
+
+---
+
+## `channels` — Messaging platform connections
+
+### Common DM policy values
+
+| `dmPolicy` | Effect |
+| ---------- | ------ |
+| `"pairing"` | New senders get a pairing code; ignored until approved (default) |
+| `"allowlist"` | Only `allowFrom` entries can initiate conversations |
+| `"open"` | Any sender (requires `allowFrom: ["*"]`) |
+| `"disabled"` | Agent does not respond to DMs |
+
+### WhatsApp
+
+```json5
+{
+  channels: {
+    whatsapp: {
+      enabled: true,
+      dmPolicy: "pairing",           // pairing | allowlist | open | disabled
+      allowFrom: ["+15555550123"],   // E.164 numbers
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["+15555550123"],
+      groups: { "<jid>@g.us": true }, // group allowlist
+      textChunkLimit: 4000,
+      ackReaction: { emoji: "👀", direct: "always", group: "mentions" },
+      accounts: {
+        work: { authDir: "~/.openclaw/credentials/whatsapp/work" },
+      },
+    },
+  },
+}
+```
+
+Login: `openclaw channels login --channel whatsapp [--account work]`
+
+### Telegram
+
+```json5
+{
+  channels: {
+    telegram: {
+      enabled: true,
+      botToken: "123:abc",           // or TELEGRAM_BOT_TOKEN env var
+      dmPolicy: "pairing",
+      allowFrom: ["123456789"],      // numeric Telegram user IDs
+      groupPolicy: "allowlist",
+      groups: {
+        "*": { requireMention: true },
+        "-1001234567890": { requireMention: false, groupPolicy: "open" },
+      },
+      streaming: "partial",          // off | partial | block | progress
+      textChunkLimit: 4000,
+    },
+  },
+}
+```
+
+### Discord
+
+```json5
+{
+  channels: {
+    discord: {
+      enabled: true,
+      token: "YOUR_BOT_TOKEN",       // or DISCORD_BOT_TOKEN env var
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+      guilds: {
+        "123456789012345678": {
+          requireMention: true,
+          users: ["987654321098765432"],
+          roles: ["111222333444555666"],
+        },
+      },
+      streaming: "off",              // off | partial | block | progress
+    },
+  },
+}
+```
+
+### Slack
+
+```json5
+{
+  channels: {
+    slack: {
+      enabled: true,
+      mode: "socket",                // socket | http
+      appToken: "xapp-...",          // Socket Mode only
+      botToken: "xoxb-...",
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+      channels: {
+        "C0123456789": { requireMention: false, users: ["U0123456789"] },
+      },
+      streaming: "partial",
+      nativeStreaming: true,
+    },
+  },
+}
+```
+
+### Signal
+
+```json5
+{
+  channels: {
+    signal: {
+      enabled: true,
+      account: "+15551234567",       // E.164 phone number
+      cliPath: "signal-cli",
+      dmPolicy: "pairing",
+      allowFrom: ["+15557654321"],
+    },
+  },
+}
+```
+
+---
+
+## `session` — Session scope and reset
+
+```json5
+{
+  session: {
+    dmScope: "per-channel-peer",     // main | per-peer | per-channel-peer | per-account-channel-peer
+    threadBindings: {
+      enabled: true,
+      idleHours: 24,
+      maxAgeHours: 0,                // 0 = no hard limit
+    },
+    reset: {
+      mode: "daily",                 // manual | daily | idle
+      atHour: 4,                     // daily reset hour (UTC)
+      idleMinutes: 120,
+    },
+  },
+}
+```
+
+---
+
+## `cron` — Scheduled jobs
+
+```json5
+{
+  cron: {
+    enabled: true,
+    maxConcurrentRuns: 2,
+    sessionRetention: "24h",
+    runLog: { maxBytes: "2mb", keepLines: 2000 },
+  },
+}
+```
+
+---
+
+## `hooks` — Incoming webhooks
+
+```json5
+{
+  hooks: {
+    enabled: true,
+    token: "shared-secret",
+    path: "/hooks",
+    defaultSessionKey: "hook:ingress",
+    allowRequestSessionKey: false,
+    allowedSessionKeyPrefixes: ["hook:"],
+    mappings: [
+      { match: { path: "gmail" }, action: "agent", agentId: "main", deliver: true },
+    ],
+  },
+}
+```
+
+<Warning>
+Treat all webhook payload content as untrusted. Keep unsafe-content bypass flags disabled unless debugging.
+</Warning>
+
+---
+
+## `logging` — Log levels and output
+
+```json5
+{
+  logging: {
+    level: "info",                // error | warn | info | debug | trace
+    file: "/tmp/openclaw/openclaw-YYYY-MM-DD.log",
+    consoleLevel: "info",
+    consoleStyle: "pretty",       // pretty | compact | json
+    redactSensitive: "tools",     // off | tools
+    redactPatterns: ["sk-.*"],
+  },
+}
+```
+
+`OPENCLAW_LOG_LEVEL=debug` overrides both `level` and `consoleLevel`. `--log-level <level>` overrides the env var.
+
+---
+
+## `diagnostics` — OpenTelemetry export
+
+```json5
+{
+  diagnostics: {
+    enabled: true,
+    otel: {
+      endpoint: "http://otel-collector:4318",
+      sampleRate: 1.0,
+      flushIntervalMs: 5000,
+      logs: false,               // true to export logs over OTLP
+    },
+  },
+}
+```
+
+---
+
+## `bindings` — Multi-agent routing
+
+```json5
+{
+  agents: {
+    list: [
+      { id: "home", default: true, workspace: "~/.openclaw/workspace-home" },
+      { id: "work", workspace: "~/.openclaw/workspace-work" },
+    ],
+  },
+  bindings: [
+    { agentId: "home", match: { channel: "whatsapp", accountId: "personal" } },
+    { agentId: "work", match: { channel: "whatsapp", accountId: "biz" } },
+  ],
+}
+```
+
+---
+
+## Config RPC (programmatic updates)
+
+Rate-limited to 3 requests per 60 seconds per `deviceId+clientIp`.
+
+**Full replace:**
+```bash
+openclaw gateway call config.get --params '{}'  # capture payload.hash
+openclaw gateway call config.apply --params '{
+  "raw": "{ agents: { defaults: { workspace: \"~/.openclaw/workspace\" } } }",
+  "baseHash": "<hash>"
+}'
+```
+
+**Partial update** (JSON merge patch — `null` deletes a key, objects merge recursively, arrays replace):
+```bash
+openclaw gateway call config.patch --params '{
+  "raw": "{ channels: { telegram: { groups: { \"*\": { requireMention: false } } } } }",
+  "baseHash": "<hash>"
+}'
+```
+
+## Related
+
+- [Getting started](/admin/getting-started)
+- [Gateway authentication](/admin/gateway/authentication)
+- [Gateway remote access](/admin/gateway/remote-access)
+- [Gateway logging](/admin/gateway/logging)
+- [Health checks](/admin/gateway/health-checks)

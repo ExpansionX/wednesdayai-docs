@@ -1,0 +1,125 @@
+---
+title: "Ollama"
+description: "Run AI models locally with Ollama — no API key required, full privacy, hundreds of models."
+audience: admin
+---
+
+# Ollama
+
+Ollama runs AI models locally on your machine. No API key, no cloud, no data leaving your network. WednesdayAI auto-discovers a running Ollama instance.
+
+## Prerequisites
+
+Install Ollama from [ollama.com](https://ollama.com). Then pull at least one model:
+
+```bash
+ollama pull llama3.3
+```
+
+Confirm Ollama is running:
+
+```bash
+ollama list
+```
+
+## Connecting WednesdayAI
+
+WednesdayAI detects Ollama automatically when it is running on the default port. No login step is required.
+
+```bash
+openclaw login
+# choose: Ollama
+# confirm or enter the base URL (default: http://localhost:11434)
+```
+
+Or set the environment variable:
+
+```bash
+export OLLAMA_HOST=http://localhost:11434
+```
+
+<Warning>
+**Use the native Ollama URL, not the OpenAI-compatible `/v1` endpoint.**
+
+Set `baseUrl` to `http://host:11434` — **not** `http://host:11434/v1`.
+
+WednesdayAI uses Ollama's native API. The `/v1` shim exists for third-party OpenAI-compatible clients; pointing WednesdayAI at it will cause unexpected errors.
+</Warning>
+
+## Config reference
+
+```json5
+{
+  providers: {
+    ollama: {
+      baseUrl: "http://localhost:11434",  // native Ollama URL — no /v1
+    }
+  },
+  agents: {
+    defaults: {
+      model: "ollama/llama3.3",
+    }
+  }
+}
+```
+
+The model ID uses the `ollama/` prefix to tell the gateway which provider to route to:
+
+| Ollama model name | WednesdayAI model ID |
+| ----------------- | -------------------- |
+| `llama3.3` | `ollama/llama3.3` |
+| `mistral` | `ollama/mistral` |
+| `qwen2.5-coder` | `ollama/qwen2.5-coder` |
+| `deepseek-r1` | `ollama/deepseek-r1` |
+
+Run `openclaw status --providers` to see which Ollama models WednesdayAI can reach.
+
+## Remote Ollama
+
+If Ollama runs on a different machine (a home server, a GPU workstation), set the URL to that host:
+
+```json5
+{
+  providers: {
+    ollama: {
+      baseUrl: "http://192.168.1.50:11434",
+    }
+  }
+}
+```
+
+For secure remote access, put Ollama behind Tailscale and use its MagicDNS name:
+
+```json5
+{
+  providers: {
+    ollama: {
+      baseUrl: "http://gpu-box.tail1234.ts.net:11434",
+    }
+  }
+}
+```
+
+## Auto-discovery
+
+When no `baseUrl` is configured, WednesdayAI checks `OLLAMA_HOST` and then falls back to `http://localhost:11434`. If Ollama responds, it is added to the available providers automatically.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No models found">
+    Ollama is running but has no models pulled. Run `ollama pull <model-name>` and restart the gateway, or run `openclaw doctor` to re-probe.
+  </Accordion>
+
+  <Accordion title="Connection refused">
+    Ollama is not running. Start it with `ollama serve` (or the system service on macOS/Linux). Verify with `ollama list`.
+  </Accordion>
+
+  <Accordion title="Unexpected errors or malformed responses">
+    You are likely pointing at the `/v1` compatibility endpoint. Change `baseUrl` to `http://host:11434` (no `/v1`).
+  </Accordion>
+
+  <Accordion title="Remote Ollama not reachable">
+    By default Ollama only listens on `127.0.0.1`. To allow remote connections, set `OLLAMA_HOST=0.0.0.0` on the machine running Ollama, then restart Ollama. Consider using Tailscale to avoid exposing port 11434 to the public internet.
+  </Accordion>
+</AccordionGroup>

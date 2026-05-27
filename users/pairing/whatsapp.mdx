@@ -1,0 +1,74 @@
+---
+title: "Pair WhatsApp"
+description: "Connect WednesdayAI to WhatsApp by scanning a QR code — takes under a minute."
+audience: user
+---
+
+# Pair WhatsApp
+
+Connecting WednesdayAI to WhatsApp takes about a minute. You scan a QR code on your phone — no phone number entry, no verification code.
+
+## What you need
+
+- A smartphone with WhatsApp installed
+- Your administrator's confirmation that the WhatsApp channel is set up
+
+## Steps
+
+### 1. Ask your administrator for the QR code
+
+Your administrator can show the pairing QR code by running:
+
+```bash
+openclaw channels whatsapp qr
+```
+
+This displays a QR code in the terminal, or they can share it with you as an image.
+
+### 2. Scan the QR code on your phone
+
+On your phone:
+
+1. Open WhatsApp
+2. Tap the **three-dot menu** (Android) or **Settings** (iPhone)
+3. Tap **Linked devices**
+4. Tap **Link a device**
+5. Scan the QR code your administrator showed you
+
+You'll see "Device successfully linked" in WhatsApp.
+
+### 3. Say hello
+
+WednesdayAI will send you a welcome message in WhatsApp within a few seconds of linking.
+
+If you don't receive a welcome message after 30 seconds, send a message yourself:
+
+> Hi
+
+This confirms the connection is working.
+
+## Tips
+
+- **WhatsApp must stay connected** — your phone needs an internet connection for messages to reach WednesdayAI. The gateway buffers messages while your phone is briefly offline, but extended offline periods may cause delays.
+- **You don't need to keep WhatsApp open** — background delivery works as long as your phone has a data connection.
+- **Re-linking** — if your phone is factory reset or WhatsApp is reinstalled, you'll need to re-scan the QR code. Ask your administrator.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="QR code expired before I could scan it">
+    QR codes expire after 20 seconds. Ask your administrator to run the QR command again to get a fresh code.
+  </Accordion>
+
+  <Accordion title="Welcome message never arrived">
+    Check that your phone has a data connection. If it does, ask your administrator to run `openclaw doctor` to check the WhatsApp channel status.
+  </Accordion>
+
+  <Accordion title="WhatsApp says the session expired">
+    You have been away for a long time and the session timed out. Ask your administrator to generate a new QR code and re-scan it.
+  </Accordion>
+
+  <Accordion title="My messages are going to the wrong AI or aren't being answered">
+    Your administrator may need to add your WhatsApp number to the allowed contacts list. Ask them to check the channel access policy.
+  </Accordion>
+</AccordionGroup>

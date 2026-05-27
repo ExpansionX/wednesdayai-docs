@@ -1,0 +1,211 @@
+---
+title: "Discord"
+description: "Connect a Discord bot to WednesdayAI: bot setup, server allowlists, native commands, and voice."
+audience: admin
+---
+
+# Discord
+
+WednesdayAI connects to Discord via the Discord Bot API. Setup requires creating a Discord application, adding a bot to your server, and configuring the bot token.
+
+## Quick setup
+
+**1. Create a Discord application and bot:**
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application** → give it a name
+3. In the sidebar, click **Bot** → **Add Bot**
+4. Copy the bot token (click **Reset Token** to reveal it)
+
+**2. Enable required intents:**
+
+In the Bot page, scroll to **Privileged Gateway Intents** and enable:
+- **Message Content Intent** — required for reading message content
+- **Server Members Intent** — recommended for user lookup
+
+**3. Generate an invite URL and add the bot to your server:**
+
+1. Go to **OAuth2 → URL Generator**
+2. Scopes: `bot`, `applications.commands`
+3. Bot Permissions: View Channels, Send Messages, Read Message History, Embed Links, Attach Files, Add Reactions
+4. Copy the URL and open it in your browser to add the bot
+
+**4. Configure the bot token:**
+
+```bash
+# Set token securely via CLI (avoids putting it in the config file in plaintext)
+openclaw config set channels.discord.token '"YOUR_BOT_TOKEN"' --json
+openclaw config set channels.discord.enabled true --json
+```
+
+Or in `~/.openclaw/openclaw.json`:
+```json5
+{
+  channels: {
+    discord: {
+      enabled: true,
+      token: "YOUR_BOT_TOKEN",   // or DISCORD_BOT_TOKEN env var
+      dmPolicy: "pairing",
+    },
+  },
+}
+```
+
+**5. Configure server allowlist and start gateway:**
+
+```json5
+{
+  channels: {
+    discord: {
+      groupPolicy: "allowlist",
+      guilds: {
+        "YOUR_SERVER_ID": {
+          requireMention: true,
+          users: ["YOUR_USER_ID"],
+        },
+      },
+    },
+  },
+}
+```
+
+Get your server ID: **Server Settings → right-click server icon → Copy Server ID** (requires Developer Mode: User Settings → Advanced → Developer Mode).
+
+```bash
+openclaw gateway run
+openclaw pairing list discord
+openclaw pairing approve discord <CODE>
+```
+
+## Access control
+
+### DM policy
+
+```json5
+{
+  channels: {
+    discord: {
+      dmPolicy: "pairing",     // pairing | allowlist | open | disabled
+      allowFrom: ["user:987654321098765432"],  // Discord user IDs with user: prefix
+    },
+  },
+}
+```
+
+Use `user:<id>` or `<@id>` format. Bare numeric IDs are ambiguous and rejected.
+
+### Server (guild) policy
+
+```json5
+{
+  channels: {
+    discord: {
+      groupPolicy: "allowlist",
+      guilds: {
+        "123456789012345678": {
+          requireMention: true,                          // bot must be @mentioned
+          users: ["987654321098765432"],                 // allowed user IDs
+          roles: ["111222333444555666"],                 // allowed role IDs
+          channels: {                                   // optional channel allowlist
+            "555666777888999000": { allow: true },
+            "111222333444000999": { allow: true, requireMention: false },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+`requireMention: false` lets the bot respond to all messages in allowed channels without needing an @mention.
+
+## Native slash commands
+
+```json5
+{
+  commands: {
+    native: "auto",   // enables native commands for Discord and Telegram
+  },
+}
+```
+
+Discord slash commands register at startup. If you change `native: false`, the gateway clears previously registered commands on next startup.
+
+Default slash command behavior: responses are ephemeral (only visible to the invoking user). Configure per command if needed.
+
+## Live streaming
+
+```json5
+{
+  channels: {
+    discord: {
+      streaming: "partial",   // off | partial | block | progress
+    },
+  },
+}
+```
+
+`partial` edits a single message in-place as tokens arrive. `off` disables streaming — bot shows typing then sends the complete response.
+
+## Voice channels
+
+Requires:
+- Native commands enabled (`commands.native: "auto"`)
+- Bot permissions: Connect, Speak in voice channels
+
+```json5
+{
+  channels: {
+    discord: {
+      voice: {
+        enabled: true,
+        autoJoin: { guildId: "123...", channelId: "456..." },
+        tts: { enabled: true },
+      },
+    },
+  },
+}
+```
+
+Users join voice channels via `/vc join` (Discord native command only).
+
+## Forum channels
+
+The bot can post to Discord forum channels. Send a message to the forum parent channel ID — the bot automatically creates a thread:
+
+```bash
+openclaw message send --channel discord --target "channel:<forumId>" --message "Title\n\nBody"
+```
+
+Or via the `message thread create` tool action in an agent.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Bot not receiving messages / 'Missing Access'">
+    1. Verify **Message Content Intent** is enabled in the Developer Portal
+    2. Verify the bot has "View Channels" and "Read Message History" permissions in the server
+    3. Restart the gateway after enabling intents
+  </Accordion>
+
+  <Accordion title="Guild messages blocked despite requireMention: false">
+    Check the `groupPolicy` — if it is `"allowlist"`, the guild must be in `guilds` map AND the sender must be in `users` or have an allowed `roles` entry. `requireMention: false` only removes the mention requirement; allowlist enforcement is separate.
+  </Accordion>
+
+  <Accordion title="Slash commands not appearing in Discord">
+    Commands can take up to 1 hour to propagate globally. For testing, use guild-specific command registration (contact maintainer for config). Check `openclaw logs --follow | grep "discord.*command"` for registration errors.
+  </Accordion>
+
+  <Accordion title="Long-running handlers time out">
+    Discord has a 3-second timeout on interaction acknowledgment. For slow tools, increase the event queue timeout:
+
+    ```json5
+    { channels: { discord: { accounts: { default: { eventQueue: { listenerTimeout: 120000 } } } } } }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Gateway configuration — Discord](/reference/config#discord)
+- [Channel troubleshooting](/admin/troubleshooting)

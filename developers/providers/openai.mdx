@@ -1,0 +1,100 @@
+---
+title: "OpenAI"
+description: "Connect WednesdayAI to GPT-4, o3, and the Codex family via API key or Codex subscription OAuth."
+audience: admin
+---
+
+# OpenAI
+
+WednesdayAI supports the full OpenAI model family: GPT-4o, o3, o1, and the Codex coding models. Authentication is either an API key or, for Codex subscribers, an OAuth flow.
+
+## API key authentication
+
+Obtain an API key from [platform.openai.com](https://platform.openai.com) → **API keys**.
+
+```bash
+openclaw login
+# choose: OpenAI
+# enter your API key when prompted
+```
+
+Or set the environment variable:
+
+```bash
+export OPENAI_API_KEY=sk-proj-...
+```
+
+Lookup order:
+
+| Source | Key / path |
+| ------ | ---------- |
+| Environment variable | `OPENAI_API_KEY` |
+| Stored credential | `~/.openclaw/credentials/openai` |
+
+## Codex subscription (OAuth)
+
+If you have an active [ChatGPT Plus or Team subscription](https://openai.com/chatgpt), you can authenticate with your account directly — no API key needed.
+
+```bash
+openclaw models auth login --provider openai-codex
+```
+
+This opens a browser window for the OAuth flow. After approving, your token is stored in `~/.openclaw/credentials/openai-codex`.
+
+<Note>
+Codex models are only available to authenticated subscribers. Attempting to use a Codex model ID with a standard API key returns a 404.
+</Note>
+
+## Selecting a model
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: "gpt-4o",
+    }
+  }
+}
+```
+
+Common model IDs:
+
+| Model | ID |
+| ----- | -- |
+| GPT-4o | `gpt-4o` |
+| GPT-4o mini | `gpt-4o-mini` |
+| o3 | `o3` |
+| o1 | `o1` |
+| Codex | `codex` |
+
+Run `openclaw status --providers` to list every model available on your key or subscription.
+
+## Key rotation
+
+Pass multiple keys as a comma-separated list to distribute load:
+
+```bash
+export OPENAI_API_KEY=sk-proj-new,sk-proj-old
+```
+
+The gateway load-balances across all keys and retries on 429 responses.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    API key is invalid. Generate a new one at [platform.openai.com](https://platform.openai.com) and re-run `openclaw login`.
+  </Accordion>
+
+  <Accordion title="429 Rate limited">
+    You have hit your tier rate limits. Add a second API key (see **Key rotation**) or upgrade your OpenAI plan.
+  </Accordion>
+
+  <Accordion title="Codex OAuth session expired">
+    Re-run `openclaw models auth login --provider openai-codex` to refresh the token.
+  </Accordion>
+
+  <Accordion title="Model not available on this key">
+    Some models (o3, o1) require specific API access tiers. Check your access at [platform.openai.com/limits](https://platform.openai.com/limits).
+  </Accordion>
+</AccordionGroup>

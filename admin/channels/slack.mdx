@@ -1,0 +1,195 @@
+---
+title: "Slack"
+description: "Connect WednesdayAI to Slack: Socket Mode setup, channel policies, and native commands."
+audience: admin
+---
+
+# Slack
+
+WednesdayAI connects to Slack via a Slack app integration. The default mode is **Socket Mode** (uses an outbound WebSocket from the gateway — no inbound webhook URL needed). HTTP Events API mode is also supported for server setups.
+
+## Quick setup (Socket Mode)
+
+**1. Create a Slack app:**
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**
+2. Under **Settings → Socket Mode**: enable Socket Mode, generate an App Token with `connections:write` scope → copy the `xapp-...` token
+3. Under **OAuth & Permissions**: install the app to your workspace → copy the Bot Token (`xoxb-...`)
+4. Under **Event Subscriptions**: enable Events API and subscribe to these bot events:
+   - `app_mention`, `message.channels`, `message.groups`, `message.im`, `message.mpim`
+   - `reaction_added`, `reaction_removed`
+5. Under **App Home**: enable the **Messages Tab** for DMs
+
+**2. Configure:**
+
+```json5
+// ~/.openclaw/openclaw.json
+{
+  channels: {
+    slack: {
+      enabled: true,
+      mode: "socket",
+      appToken: "xapp-...",
+      botToken: "xoxb-...",
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+    },
+  },
+}
+```
+
+Env fallback (default account only): `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN`.
+
+**3. Start the gateway:**
+
+```bash
+openclaw gateway run
+openclaw pairing list slack
+openclaw pairing approve slack <CODE>
+```
+
+## HTTP Events API mode
+
+```json5
+{
+  channels: {
+    slack: {
+      mode: "http",
+      botToken: "xoxb-...",
+      signingSecret: "...",        // from Basic Information → App Credentials
+      webhookPath: "/slack/events",
+    },
+  },
+}
+```
+
+Set the Request URL in Slack to `https://your-gateway-host/slack/events`. Multi-account HTTP setups need distinct `webhookPath` per account.
+
+## Access control
+
+### DM policy
+
+```json5
+{
+  channels: {
+    slack: {
+      dmPolicy: "pairing",         // pairing | allowlist | open | disabled
+      allowFrom: ["U0123456789"],  // Slack user IDs
+    },
+  },
+}
+```
+
+### Channel policy
+
+```json5
+{
+  channels: {
+    slack: {
+      groupPolicy: "allowlist",
+      channels: {
+        "C0123456789": {
+          requireMention: false,
+          users: ["U0123456789", "U9876543210"],
+        },
+      },
+    },
+  },
+}
+```
+
+Channel IDs: right-click a channel in Slack → **Copy Link** — the ID is the `C...` part.
+
+## Slash commands
+
+Native slash command auto-mode is **off** for Slack (unlike Discord/Telegram). Enable explicitly:
+
+```json5
+{
+  channels: {
+    slack: {
+      commands: { native: true },
+    },
+  },
+}
+```
+
+Or use a single configured slash command:
+```json5
+{
+  channels: {
+    slack: {
+      slashCommand: {
+        enabled: true,
+        name: "wednesdayai",
+        ephemeral: true,
+      },
+    },
+  },
+}
+```
+
+Note: Slack reserves `/status` — the gateway registers `/agentstatus` instead.
+
+## Live streaming
+
+```json5
+{
+  channels: {
+    slack: {
+      streaming: "partial",      // off | partial | block | progress
+      nativeStreaming: true,     // use Slack's native streaming API (chat.startStream)
+    },
+  },
+}
+```
+
+Native Slack streaming requires:
+1. **Agents and AI Apps** feature enabled in the Slack app settings
+2. `assistant:write` scope for the bot
+3. A reply thread available (follows `replyToMode`)
+
+## Reply threading
+
+```json5
+{
+  channels: {
+    slack: {
+      replyToMode: "off",        // off | first | all
+    },
+  },
+}
+```
+
+<Warning>
+In Slack, `replyToMode: "off"` disables ALL reply threading — including explicit `[[reply_to_current]]` tags in messages. This differs from Telegram where explicit tags are still honored.
+</Warning>
+
+## Required Slack app scopes
+
+**Bot Token Scopes** (required):
+`chat:write`, `channels:history`, `channels:read`, `groups:history`, `im:history`, `im:read`, `im:write`, `mpim:history`, `mpim:read`, `mpim:write`, `users:read`, `app_mentions:read`, `assistant:write`, `reactions:read`, `reactions:write`, `pins:read`, `pins:write`, `emoji:read`, `commands`, `files:read`, `files:write`
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Bot not responding in channels">
+    1. Check `groupPolicy` — if `"allowlist"`, the channel must be in `channels` map
+    2. Check `requireMention` — by default the bot must be `@mentioned` in channels
+    3. Check `users` in the channel config — sender must be in the list (if set)
+    4. Run `openclaw channels status --probe` to verify connectivity
+  </Accordion>
+
+  <Accordion title="Socket Mode not connecting">
+    Verify both the `xapp-...` (App Token) and `xoxb-...` (Bot Token) are correct and that Socket Mode is enabled in the Slack app settings.
+  </Accordion>
+
+  <Accordion title="DM messages ignored">
+    Check `dm.enabled` (default: true) and `dmPolicy`. If `"pairing"`, approve pending requests: `openclaw pairing list slack`.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Gateway configuration — Slack](/reference/config#slack)
+- [Channel troubleshooting](/admin/troubleshooting)

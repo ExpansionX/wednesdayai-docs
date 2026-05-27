@@ -1,9 +1,371 @@
 ---
 title: "CLI reference"
-description: "Every openclaw command and flag."
+sidebarTitle: "CLI reference"
+description: "All openclaw CLI commands, flags, and environment variables."
 audience: admin
 ---
 
 # CLI reference
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+The `openclaw` CLI is the primary interface for managing the gateway, channels, agents, and configuration. Install it globally via npm or pnpm — see [Getting started](/admin/getting-started).
+
+```bash
+openclaw --version    # show installed version
+openclaw --help       # list all top-level commands
+openclaw <command> --help  # help for a specific command
+```
+
+## Global flags
+
+| Flag | Effect |
+| ---- | ------ |
+| `--log-level <level>` | Override log level for this command (`error`, `warn`, `info`, `debug`, `trace`) |
+| `--verbose` | Increase console verbosity (does not affect file log level) |
+| `--json` | Output as JSON where supported |
+| `--profile <name>` | Use a named gateway profile |
+
+---
+
+## Gateway commands
+
+### `openclaw gateway`
+
+Manage the gateway process.
+
+```bash
+openclaw gateway status           # is it running?
+openclaw gateway status --deep    # deep probe: config + channel health
+openclaw gateway status --json    # machine-readable output
+openclaw gateway start            # start the gateway service
+openclaw gateway stop             # stop the gateway service
+openclaw gateway restart          # restart the gateway service
+openclaw gateway run              # run in foreground (Ctrl-C to stop)
+openclaw gateway install          # install as a system service (systemd/launchd)
+openclaw gateway uninstall        # remove system service
+```
+
+The gateway runs on port `18789` by default. Override with `--port <n>` or `OPENCLAW_GATEWAY_PORT`.
+
+**Systemd (Linux):**
+```bash
+systemctl --user start|stop|restart|status openclaw-gateway
+journalctl --user -u openclaw-gateway -f
+```
+
+### `openclaw health`
+
+Fetch a health snapshot from the running gateway via WebSocket RPC.
+
+```bash
+openclaw health
+openclaw health --json
+openclaw health --verbose         # includes per-account timings and live channel probes
+openclaw health --timeout 5000    # timeout in ms (default: 10000)
+```
+
+Exits non-zero if the gateway is unreachable or any probe fails.
+
+### `openclaw status`
+
+Local + channel diagnostics summary.
+
+```bash
+openclaw status           # compact summary: gateway, channels, sessions
+openclaw status --all     # full local diagnosis (safe to paste for debugging)
+openclaw status --deep    # also probes running gateway for per-channel health
+openclaw status --usage   # include provider usage/quota summary
+```
+
+### `openclaw doctor`
+
+Health checks and guided repairs.
+
+```bash
+openclaw doctor               # interactive: prompts before applying fixes
+openclaw doctor --fix         # apply repairs (backs up config first)
+openclaw doctor --repair      # alias for --fix
+openclaw doctor --yes         # accept all prompts without asking
+openclaw doctor --deep        # also scan for extra/stale gateway installs
+openclaw doctor --non-interactive  # safe migrations only; no restart/service actions
+```
+
+Checks performed: config validation, model auth status, channel connectivity, service health, port collisions, file permissions, security policy warnings, legacy state migrations.
+
+### `openclaw logs`
+
+Tail the gateway log file.
+
+```bash
+openclaw logs --follow        # live tail (default: pretty, colorized)
+openclaw logs --json          # structured JSON output
+openclaw logs --plain         # plain text
+openclaw logs --no-color      # disable ANSI colors
+```
+
+### `openclaw update`
+
+Update to a newer version of WednesdayAI.
+
+```bash
+openclaw update               # update to latest on current channel
+openclaw update --dry-run     # preview without applying
+openclaw update --channel stable|beta|dev
+openclaw update --tag <version>  # install specific version
+```
+
+---
+
+## Authentication and providers
+
+### `openclaw login`
+
+Authenticate with an AI provider.
+
+```bash
+openclaw login                           # interactive provider selection
+openclaw login --provider anthropic      # authenticate with Anthropic
+openclaw login --provider openai
+```
+
+### `openclaw models`
+
+Manage AI model credentials and selection.
+
+```bash
+openclaw models status                   # current auth profiles
+openclaw models status --check          # exit 0=OK, 1=expired, 2=expiring
+openclaw models list                    # available models
+openclaw models auth paste-token --provider anthropic
+openclaw models auth order get --provider anthropic
+openclaw models auth order set --provider anthropic anthropic:work
+openclaw models auth order clear --provider anthropic
+```
+
+---
+
+## Channels
+
+### `openclaw channels`
+
+Manage channel connections.
+
+```bash
+openclaw channels list                   # installed channels and status
+openclaw channels status                 # connectivity summary
+openclaw channels status --probe        # live probe all channels
+openclaw channels status --channel whatsapp
+openclaw channels login --channel whatsapp           # link/authenticate
+openclaw channels login --channel whatsapp --account work
+openclaw channels logout --channel whatsapp
+openclaw channels logs --channel telegram --follow
+```
+
+---
+
+## Pairing
+
+### `openclaw pairing`
+
+Manage device and sender pairing approvals.
+
+```bash
+openclaw pairing list                    # pending pairing requests
+openclaw pairing list whatsapp           # for a specific channel
+openclaw pairing approve whatsapp <CODE>
+openclaw pairing deny whatsapp <CODE>
+openclaw pairing list --all              # approved + pending
+```
+
+### `openclaw devices`
+
+Manage paired devices (CLI client certificates).
+
+```bash
+openclaw devices list
+openclaw devices revoke <deviceId>
+openclaw devices rotate                  # rotate your own device token
+```
+
+---
+
+## Configuration
+
+### `openclaw config`
+
+Read and write gateway configuration.
+
+```bash
+openclaw config get                      # print full config
+openclaw config get agents.defaults.model.primary
+openclaw config set agents.defaults.model.primary '"anthropic/claude-sonnet-4-5"' --json
+openclaw config unset channels.telegram.dmPolicy
+```
+
+Values are JSON (use `--json` flag) or plain strings.
+
+### `openclaw onboard` / `openclaw configure`
+
+Interactive setup wizard.
+
+```bash
+openclaw onboard                         # full onboarding wizard
+openclaw onboard --install-daemon        # also install gateway service
+openclaw configure                       # re-run configuration wizard
+openclaw configure --section model       # configure only model credentials
+```
+
+---
+
+## Security
+
+### `openclaw security`
+
+Security audit and vulnerability scan.
+
+```bash
+openclaw security audit                  # flag common misconfigurations
+openclaw security audit --deep           # also check network exposure
+openclaw security audit --fix            # auto-fix safe issues
+openclaw security audit --json           # machine-readable output
+```
+
+---
+
+## Sessions and agents
+
+### `openclaw sessions`
+
+View and manage agent sessions.
+
+```bash
+openclaw sessions list
+openclaw sessions list --agent main
+openclaw sessions view <sessionKey>
+openclaw sessions clear <sessionKey>     # clear session history
+```
+
+### `openclaw agents`
+
+Manage agent configurations.
+
+```bash
+openclaw agents list
+openclaw agents status
+```
+
+---
+
+## Messaging
+
+### `openclaw message`
+
+Send messages from the CLI.
+
+```bash
+openclaw message send --target +15555550123 --message "Hello"
+openclaw message send --channel telegram --target 123456789 --message "Test"
+openclaw message send --channel discord --target "channel:123" --message "Test"
+```
+
+---
+
+## Skills and hooks
+
+### `openclaw skills`
+
+Manage agent skills.
+
+```bash
+openclaw skills list                     # installed skills
+openclaw skills enable <name>
+openclaw skills disable <name>
+openclaw skills install <path-or-spec>
+openclaw skills info <name>
+```
+
+### `openclaw hooks`
+
+Manage gateway hooks.
+
+```bash
+openclaw hooks list                      # all hooks with enable/disable status
+openclaw hooks enable <name>
+openclaw hooks disable <name>
+openclaw hooks install <path-or-spec>
+openclaw hooks info <name>
+openclaw hooks check                     # verify hook requirements
+```
+
+---
+
+## Cron
+
+### `openclaw cron`
+
+Manage scheduled jobs.
+
+```bash
+openclaw cron list                       # all cron jobs
+openclaw cron add --schedule "0 9 * * *" --message "Morning briefing"
+openclaw cron remove <id>
+openclaw cron run <id>                   # run a job immediately
+openclaw cron logs <id>                  # view job run history
+```
+
+---
+
+## System
+
+### `openclaw dashboard`
+
+Open the control panel in your browser.
+
+```bash
+openclaw dashboard                       # open http://localhost:18789/
+```
+
+### `openclaw qr`
+
+Display a QR code for mobile pairing.
+
+```bash
+openclaw qr
+openclaw qr --channel whatsapp
+```
+
+### `openclaw uninstall`
+
+Remove WednesdayAI and its data.
+
+```bash
+openclaw uninstall                       # guided uninstall
+openclaw uninstall --purge              # also remove ~/.openclaw/ data directory
+```
+
+---
+
+## Environment variables
+
+| Variable | Effect |
+| -------- | ------ |
+| `OPENCLAW_GATEWAY_TOKEN` | Gateway auth token |
+| `OPENCLAW_GATEWAY_PASSWORD` | Gateway auth password |
+| `OPENCLAW_GATEWAY_PORT` | Override gateway port |
+| `OPENCLAW_CONFIG_PATH` | Absolute path to config file |
+| `OPENCLAW_HOME` | Override home directory for internal paths |
+| `OPENCLAW_STATE_DIR` | Override state directory |
+| `OPENCLAW_LOG_LEVEL` | Log level override (`error`, `warn`, `info`, `debug`, `trace`) |
+| `OPENCLAW_LOAD_SHELL_ENV=1` | Import missing vars from login shell |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `GOOGLE_API_KEY` | Google AI API key |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token (default account) |
+| `DISCORD_BOT_TOKEN` | Discord bot token (default account) |
+| `SLACK_BOT_TOKEN` | Slack bot token (default account) |
+| `SLACK_APP_TOKEN` | Slack app token for Socket Mode (default account) |
+
+## Related
+
+- [Gateway configuration reference](/reference/config)
+- [Health checks](/admin/gateway/health-checks)
+- [Troubleshooting](/admin/troubleshooting)

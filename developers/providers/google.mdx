@@ -1,0 +1,87 @@
+---
+title: "Google"
+description: "Connect WednesdayAI to Gemini models via AI Studio API key or Vertex AI service account."
+audience: admin
+---
+
+# Google
+
+WednesdayAI supports Google's Gemini model family. You can authenticate with an AI Studio API key (easiest) or a Vertex AI service account (for GCP-native deployments).
+
+## AI Studio API key
+
+Obtain a key from [aistudio.google.com](https://aistudio.google.com) → **Get API key**.
+
+```bash
+openclaw login
+# choose: Google
+# enter your API key when prompted
+```
+
+Or set the environment variable:
+
+```bash
+export GOOGLE_API_KEY=AIza...
+```
+
+Lookup order:
+
+| Source | Key / path |
+| ------ | ---------- |
+| Environment variable | `GOOGLE_API_KEY` |
+| Stored credential | `~/.openclaw/credentials/google` |
+
+## Vertex AI
+
+For production GCP deployments, use a service account instead of an API key.
+
+1. Create a service account in [IAM & Admin](https://console.cloud.google.com/iam-admin/serviceaccounts) with the **Vertex AI User** role.
+2. Download a JSON key file.
+3. Set the environment variable:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+export GOOGLE_CLOUD_PROJECT=my-project-id
+```
+
+<Note>
+When `GOOGLE_APPLICATION_CREDENTIALS` is set, the gateway uses Vertex AI authentication automatically. The `GOOGLE_API_KEY` variable is ignored.
+</Note>
+
+## Selecting a model
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: "gemini-2.0-flash",
+    }
+  }
+}
+```
+
+Common model IDs:
+
+| Model | ID |
+| ----- | -- |
+| Gemini 2.0 Flash | `gemini-2.0-flash` |
+| Gemini 2.5 Pro | `gemini-2.5-pro` |
+| Gemini 1.5 Flash | `gemini-1.5-flash` |
+
+Run `openclaw status --providers` to list models available on your key.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="API key rejected">
+    Ensure the key was created in AI Studio (not Cloud Console) and has the Generative Language API enabled. Visit [console.cloud.google.com/apis](https://console.cloud.google.com/apis) and enable **Generative Language API**.
+  </Accordion>
+
+  <Accordion title="Vertex AI permission denied">
+    The service account is missing the **Vertex AI User** (`roles/aiplatform.user`) role. Add it in IAM & Admin.
+  </Accordion>
+
+  <Accordion title="Model not found">
+    Not all Gemini models are available in all regions. If using Vertex AI, try a different `GOOGLE_CLOUD_REGION` or check the [Vertex AI model availability table](https://cloud.google.com/vertex-ai/docs/generative-ai/learn/models).
+  </Accordion>
+</AccordionGroup>

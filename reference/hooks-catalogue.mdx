@@ -1,9 +1,144 @@
 ---
 title: "Hooks catalogue"
-description: "All available hook events, their payloads, and execution order."
+sidebarTitle: "Hooks catalogue"
+description: "All bundled WednesdayAI hooks: events, configuration, and handler contract."
 audience: developer
 ---
 
 # Hooks catalogue
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI ships four bundled hooks. They are auto-discovered from `dist/hooks/bundled/` and managed via the CLI.
+
+```bash
+openclaw hooks list            # show all hooks with enabled/disabled status
+openclaw hooks enable <name>
+openclaw hooks disable <name>
+openclaw hooks info <name>     # requirements, config, current status
+openclaw hooks check           # verify all enabled hooks can load
+```
+
+During onboarding (`openclaw onboard`), the wizard prompts you to enable recommended hooks.
+
+---
+
+## `session-memory`
+
+Saves session context to the agent workspace when you issue `/new` or `/reset`. Useful for giving the agent a memory of previous sessions.
+
+| Property | Value |
+| -------- | ----- |
+| **Event** | `command:new` |
+| **Writes to** | `~/.openclaw/workspace/memory/` (default) |
+| **Emoji** | 💾 |
+
+**Enable:**
+```bash
+openclaw hooks enable session-memory
+```
+
+**What it does:** when a session resets, saves a structured summary of the session to the workspace memory directory. On the next session start, the agent can read this file if memory search tools are configured.
+
+---
+
+## `bootstrap-extra-files`
+
+Injects additional files from configured glob/path patterns into the agent workspace when it bootstraps. Used to inject custom context files, templates, or system prompts that should always be available to the agent.
+
+| Property | Value |
+| -------- | ----- |
+| **Event** | `agent:bootstrap` |
+| **Reads from** | Configured glob patterns |
+| **Emoji** | 📎 |
+
+**Enable:**
+```bash
+openclaw hooks enable bootstrap-extra-files
+```
+
+**Configure paths in `~/.openclaw/openclaw.json`:**
+```json5
+{
+  hooks: {
+    internal: {
+      entries: {
+        "bootstrap-extra-files": {
+          enabled: true,
+          config: {
+            patterns: ["~/.openclaw/context/*.md", "~/.openclaw/context/*.txt"],
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+---
+
+## `command-logger`
+
+Logs all command events to a local log file. Provides an audit trail of every `/command` sent to the gateway.
+
+| Property | Value |
+| -------- | ----- |
+| **Event** | All `command:*` events |
+| **Writes to** | `~/.openclaw/logs/commands.log` |
+| **Emoji** | 📝 |
+
+**Enable:**
+```bash
+openclaw hooks enable command-logger
+```
+
+**Log format** (JSONL, one entry per line):
+```json
+{"timestamp":"2026-05-27T12:34:56.789Z","event":"command:new","sessionKey":"agent:main:whatsapp:dm:+15555550123","agentId":"main"}
+```
+
+---
+
+## `boot-md`
+
+Runs `BOOT.md` from the agent workspace when the gateway starts. Useful for injecting startup instructions or running an initialization checklist.
+
+| Property | Value |
+| -------- | ----- |
+| **Event** | `gateway:start` |
+| **Reads from** | `<workspace>/BOOT.md` |
+| **Emoji** | 🚀 |
+| **Requires** | Internal hooks enabled: `hooks.internal.enabled: true` |
+
+**Enable:**
+```bash
+openclaw hooks enable boot-md
+```
+
+---
+
+## Hook discovery order
+
+Hooks are discovered in this order (highest precedence first):
+
+1. `<workspace>/hooks/` — per-agent hooks
+2. `~/.openclaw/hooks/` — user-installed shared hooks
+3. `<openclaw>/dist/hooks/bundled/` — bundled hooks (this catalogue)
+
+A hook in a higher-precedence directory overrides one with the same `name` in a lower-precedence directory.
+
+## Installing custom hooks
+
+```bash
+openclaw hooks install ./path/to/my-hook
+openclaw hooks install @wednesdayai/my-hook-pack
+```
+
+Dependencies are installed with `npm install --ignore-scripts`. Keep hook dependencies to pure JS/TS packages with no `postinstall` build steps.
+
+## Writing a hook
+
+See [Hooks](/developers/hooks) for the full hook authoring guide, including the `HookContext` type, all available events, and `HOOK.md` frontmatter format.
+
+## Related
+
+- [Hooks (developer guide)](/developers/hooks)
+- [Gateway configuration — hooks section](/reference/config#hooks--incoming-webhooks)

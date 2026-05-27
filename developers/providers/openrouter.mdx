@@ -1,0 +1,91 @@
+---
+title: "OpenRouter"
+description: "Access 200+ models from a single OpenRouter API key — automatic provider fallback, unified billing."
+audience: admin
+---
+
+# OpenRouter
+
+[OpenRouter](https://openrouter.ai) is a unified API gateway that gives WednesdayAI access to 200+ models from Anthropic, OpenAI, Google, Mistral, Meta, and many others — all from a single API key with a single billing account.
+
+## When to use OpenRouter
+
+- You want to experiment with many models without managing separate API keys
+- You need automatic fallback when a provider is down
+- You want unified billing across providers
+- You want access to models not available in your region
+
+## Authentication
+
+Obtain an API key from [openrouter.ai/keys](https://openrouter.ai/keys).
+
+```bash
+openclaw login
+# choose: OpenRouter
+# enter your API key when prompted
+```
+
+Or set the environment variable:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+Lookup order:
+
+| Source | Key / path |
+| ------ | ---------- |
+| Environment variable | `OPENROUTER_API_KEY` |
+| Stored credential | `~/.openclaw/credentials/openrouter` |
+
+## Selecting a model
+
+OpenRouter model IDs use a `provider/model` format, prefixed with `openrouter/`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: "openrouter/anthropic/claude-opus-4-6",
+    }
+  }
+}
+```
+
+Common model IDs via OpenRouter:
+
+| Model | WednesdayAI model ID |
+| ----- | -------------------- |
+| Claude Opus 4.6 | `openrouter/anthropic/claude-opus-4-6` |
+| Claude Sonnet 4.6 | `openrouter/anthropic/claude-sonnet-4-6` |
+| GPT-4o | `openrouter/openai/gpt-4o` |
+| Gemini 2.0 Flash | `openrouter/google/gemini-2.0-flash-001` |
+| Llama 3.3 70B | `openrouter/meta-llama/llama-3.3-70b-instruct` |
+| Mistral Large | `openrouter/mistralai/mistral-large` |
+| DeepSeek R1 | `openrouter/deepseek/deepseek-r1` |
+
+Run `openclaw status --providers` to list models your key can access.
+
+## Automatic fallback
+
+OpenRouter supports provider fallback — if one provider is overloaded or down, it routes to another. This is configured in your OpenRouter account dashboard, not in WednesdayAI itself.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    API key is invalid. Re-run `openclaw login` and enter a fresh key from [openrouter.ai/keys](https://openrouter.ai/keys).
+  </Accordion>
+
+  <Accordion title="Model not available">
+    Not all models are available to all account tiers. Check [openrouter.ai/models](https://openrouter.ai/models) to confirm your key has access to the model you selected.
+  </Accordion>
+
+  <Accordion title="Higher latency than direct provider">
+    OpenRouter adds a routing hop. If latency is a concern, consider connecting to the provider directly. Use OpenRouter for experimentation and fall back to direct connections for production.
+  </Accordion>
+
+  <Accordion title="Unexpected model behaviour">
+    OpenRouter may proxy to a different provider version than expected. Check [openrouter.ai/models](https://openrouter.ai/models) to see which backend a model ID resolves to.
+  </Accordion>
+</AccordionGroup>

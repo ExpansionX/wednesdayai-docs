@@ -1,0 +1,153 @@
+---
+title: "Anthropic"
+description: "Connect WednesdayAI to Claude models — Sonnet, Opus, and Haiku — with API key, setup-token, or environment variable authentication."
+audience: admin
+---
+
+# Anthropic
+
+WednesdayAI uses Anthropic's Claude models for its default AI. This page covers every authentication path and the Anthropic-specific config options: thinking mode and prompt caching.
+
+## Authentication
+
+### API key (recommended for most deployments)
+
+Obtain an API key from [console.anthropic.com](https://console.anthropic.com) → **API Keys**.
+
+Authenticate via the interactive wizard:
+
+```bash
+openclaw login
+# choose: Anthropic
+# enter your API key when prompted
+```
+
+Or set an environment variable before the gateway starts:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+The gateway checks credentials in this order:
+
+| Source | Key / path |
+| ------ | ---------- |
+| Environment variable | `ANTHROPIC_API_KEY` |
+| Stored credential | `~/.openclaw/credentials/anthropic` |
+| Config file | `providers.anthropic.apiKey` (not recommended — key ends up in config) |
+
+<Warning>
+Never put a live API key directly in `openclaw.json`. Use an environment variable or the credential store so the key stays out of version control.
+</Warning>
+
+### Key rotation
+
+To rotate without downtime, pass multiple keys as a comma-separated list:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-new-key,sk-ant-old-key
+```
+
+The gateway load-balances across all keys and retries on 429 / 529 responses.
+
+### Setup token (Pi and embedded agents)
+
+If you use WednesdayAI on a Raspberry Pi or headless server and cannot paste a key interactively, generate a short-lived setup token on a machine where you are already authenticated:
+
+```bash
+openclaw setup-token --provider anthropic
+```
+
+On the headless device, run onboarding with the token:
+
+```bash
+openclaw onboard --setup-token <token>
+```
+
+The token is exchanged for a credential and stored in `~/.openclaw/credentials/`. It expires after 15 minutes.
+
+## Selecting a model
+
+Set the default model in `~/.openclaw/openclaw.json`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: "claude-sonnet-4-6",
+    }
+  }
+}
+```
+
+Available Claude model IDs:
+
+| Model | ID |
+| ----- | -- |
+| Claude Sonnet 4.6 | `claude-sonnet-4-6` |
+| Claude Opus 4.7 | `claude-opus-4-7` |
+| Claude Haiku 4.5 | `claude-haiku-4-5-20251001` |
+
+## Thinking mode
+
+Claude Sonnet and Opus support extended thinking — the model reasons through a problem before responding. This improves quality on complex tasks at the cost of extra tokens and latency.
+
+```json5
+{
+  agents: {
+    defaults: {
+      thinkingMode: "adaptive",  // "off" | "adaptive" | "always"
+    }
+  }
+}
+```
+
+| Value | Behaviour |
+| ----- | --------- |
+| `off` | Thinking disabled for all requests |
+| `adaptive` | Gateway decides based on query complexity (default for Claude 4.6+) |
+| `always` | Thinking enabled on every request |
+
+Users can toggle thinking per-message with `/think on` or `/think off`.
+
+## Prompt caching
+
+Anthropic's prompt caching reuses the KV cache for repeated system-prompt prefixes, cutting cost and latency on long system prompts.
+
+```json5
+{
+  providers: {
+    anthropic: {
+      cacheRetention: "short",  // "off" | "short" | "long"
+    }
+  }
+}
+```
+
+| Value | Cache TTL | Cost savings |
+| ----- | --------- | ------------ |
+| `off` | No caching | None |
+| `short` | 5 minutes | ~10% per cached request |
+| `long` | 1 hour | ~25% per cached request |
+
+`long` is most effective when the same agent has a large, stable system prompt across many conversations.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    The API key is invalid or has been revoked. Generate a new key at [console.anthropic.com](https://console.anthropic.com) and re-run `openclaw login`.
+  </Accordion>
+
+  <Accordion title="529 Overloaded">
+    Anthropic is under load. The gateway retries automatically with exponential backoff. If it persists, add a second API key to spread load — see **Key rotation** above.
+  </Accordion>
+
+  <Accordion title="Model not found">
+    The model ID is wrong or the model is not available on your tier. Run `openclaw status --providers` to list models available to your key.
+  </Accordion>
+
+  <Accordion title="Thinking mode has no effect">
+    Thinking requires Claude Sonnet 4.5+ or Opus 4.6+. Haiku models do not support thinking. Check your model ID in `agents.defaults.model`.
+  </Accordion>
+</AccordionGroup>

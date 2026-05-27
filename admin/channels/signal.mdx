@@ -1,0 +1,153 @@
+---
+title: "Signal"
+description: "Connect Signal to WednesdayAI via signal-cli: registration, QR linking, and access control."
+audience: admin
+---
+
+# Signal
+
+WednesdayAI connects to Signal via [signal-cli](https://github.com/AsamK/signal-cli), an external CLI tool that the gateway manages as a child process. You need a Signal-capable phone number (or a linked Signal account) to use this channel.
+
+## Prerequisites
+
+- signal-cli installed on the gateway host
+- A phone number that can receive SMS (or Signal QR linking to an existing account)
+- Java Runtime Environment (JRE 25+) if using the JVM build of signal-cli, or the native binary
+
+## Install signal-cli
+
+```bash
+VERSION=$(curl -Ls -o /dev/null -w %{url_effective} https://github.com/AsamK/signal-cli/releases/latest | sed -e 's/^.*\/v//')
+curl -L -O "https://github.com/AsamK/signal-cli/releases/download/v${VERSION}/signal-cli-${VERSION}-Linux-native.tar.gz"
+sudo tar xf "signal-cli-${VERSION}-Linux-native.tar.gz" -C /opt
+sudo ln -sf /opt/signal-cli /usr/local/bin/
+signal-cli --version
+```
+
+## Setup path A: Link existing Signal account (QR)
+
+Use this if you want to connect your existing Signal account to the bot without registering a new number.
+
+```bash
+signal-cli link -n "WednesdayAI"
+# Scan the displayed QR code with your Signal app
+```
+
+Then configure OpenClaw with your Signal number:
+
+```json5
+{
+  channels: {
+    signal: {
+      enabled: true,
+      account: "+15551234567",    // E.164 phone number
+      cliPath: "signal-cli",
+      dmPolicy: "pairing",
+    },
+  },
+}
+```
+
+## Setup path B: Register a dedicated bot number (recommended)
+
+Use a separate phone number for the bot — this avoids de-authenticating your personal Signal account.
+
+```bash
+# Register the number
+signal-cli -a +15551234567 register
+
+# If captcha required:
+# Open https://signalcaptchas.org/registration/generate.html
+# Complete the captcha and copy the signalcaptcha:// URL
+signal-cli -a +15551234567 register --captcha 'signalcaptcha://...'
+
+# Verify with the SMS code
+signal-cli -a +15551234567 verify 123456
+```
+
+Then configure and restart:
+
+```json5
+{
+  channels: {
+    signal: {
+      enabled: true,
+      account: "+15551234567",
+      cliPath: "signal-cli",
+      dmPolicy: "pairing",
+      allowFrom: ["+15557654321"],
+    },
+  },
+}
+```
+
+```bash
+systemctl --user restart openclaw-gateway
+openclaw doctor
+openclaw channels status --probe
+```
+
+## Access control
+
+```json5
+{
+  channels: {
+    signal: {
+      dmPolicy: "pairing",             // pairing | allowlist | open | disabled
+      allowFrom: ["+15557654321"],     // E.164 or uuid:<signal-uuid>
+      groupPolicy: "allowlist",        // open | allowlist | disabled
+      groupAllowFrom: ["+15557654321"],
+    },
+  },
+}
+```
+
+Approve DM pairing requests:
+```bash
+openclaw pairing list signal
+openclaw pairing approve signal <CODE>
+```
+
+## Using an external signal-cli daemon
+
+If you prefer to manage signal-cli separately (not auto-spawned by the gateway):
+
+```json5
+{
+  channels: {
+    signal: {
+      httpUrl: "http://127.0.0.1:8080",
+      autoStart: false,
+    },
+  },
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="signal-cli not found">
+    Check that `signal-cli` is in PATH: `which signal-cli`
+
+    Update `cliPath` in config if installed to a non-standard location:
+    ```json5
+    { channels: { signal: { cliPath: "/opt/signal-cli/bin/signal-cli" } } }
+    ```
+  </Accordion>
+
+  <Accordion title="DMs ignored / no reply">
+    1. Check pairing: `openclaw pairing list signal`
+    2. Verify the account is registered: `signal-cli -a +15551234567 listIdentities`
+    3. Check logs: `openclaw logs --follow | grep signal`
+  </Accordion>
+
+  <Accordion title="Registration fails with captcha error">
+    Complete the captcha at https://signalcaptchas.org/registration/generate.html and pass the `signalcaptcha://` URL to the register command.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Gateway configuration — Signal](/reference/config#signal)
+- [signal-cli documentation](https://github.com/AsamK/signal-cli)
+- [Channel troubleshooting](/admin/troubleshooting)
