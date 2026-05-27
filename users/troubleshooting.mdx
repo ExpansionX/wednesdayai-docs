@@ -1,9 +1,87 @@
 ---
 title: "Troubleshooting"
-description: "Fix common problems with your WednesdayAI setup."
+description: "Fix common issues: the bot not responding, slow replies, and context problems."
 audience: user
 ---
 
 # Troubleshooting
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+## The bot is not responding
+
+1. **Check you are on the allowlist.** Your admin needs to add your number or username to the allowlist before the gateway responds to your messages.
+
+2. **Try `/status`** — if the bot responds, it is working. If not, the issue is likely connectivity or the allowlist.
+
+3. **Check the gateway is running.** Ask your admin, or if you manage the gateway yourself:
+   ```bash
+   openclaw gateway status
+   ```
+
+4. **Try the control panel** at `http://localhost:18789/` — if the chat works there but not in your messaging app, the issue is the channel connection.
+
+## The bot is slow to respond
+
+- **Complex tool use takes time.** If the agent is running code, searching the web, or controlling a browser, it may take 10–30 seconds.
+- **Thinking mode** (`/think high`) is slower by design — the model reasons before responding.
+- `/think off` disables extended reasoning and usually speeds up responses.
+
+## The bot seems to have forgotten context
+
+Context windows have limits. If a conversation is very long, earlier messages fall out of the window.
+
+Use `/compact` to summarise the conversation and continue:
+
+```
+/compact
+```
+
+Or start fresh:
+
+```
+/reset
+```
+
+## I got an error response
+
+Common error messages and what they mean:
+
+| Message | Likely cause |
+| ------- | ------------ |
+| "No credentials found" | The AI provider key is missing or expired — tell your admin |
+| "Rate limit exceeded" | Too many requests to the AI provider — wait a minute and retry |
+| "Tool execution denied" | You do not have permission to run that tool |
+| "Gateway unreachable" | The gateway is down — tell your admin |
+
+## Commands are not working
+
+- Commands only work if you are authorized. Ask your admin if `/status` and other commands have no effect.
+- Make sure commands are sent as **standalone messages** (just `/status`, not "hey /status is this working?"). Inline shortcuts (`/help`, `/status`, `/whoami`, `/commands`) work embedded in a message; most others do not.
+
+## I am not receiving voice messages
+
+TTS must be enabled by your admin. If it is available, enable it:
+
+```
+/tts always
+```
+
+## The agent is doing something unexpected
+
+If the agent is behaving in a way you did not intend:
+
+1. Send `/stop` to interrupt the current response.
+2. Send `/reset` to start a fresh session.
+3. If the agent made an action you did not want (ran a command, wrote a file), tell your admin — they can check the session transcript.
+
+## I want to change the AI model
+
+```
+/model claude-3-5-sonnet
+/model gpt-4o
+```
+
+Use `/status` to see the current model and `/model` to list available models.
+
+## Still stuck?
+
+Send `/status` to your admin so they can see the same information you see. If you can get to the control panel at `http://localhost:18789/`, the Logs tab shows recent activity.

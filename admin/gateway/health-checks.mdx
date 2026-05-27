@@ -1,9 +1,212 @@
 ---
 title: "Health checks"
-description: "Configure and interpret gateway health check behaviour."
+description: "Verify gateway and channel health: status commands, doctor repairs, and automated monitoring."
 audience: admin
 ---
 
 # Health checks
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI provides several tools to verify that the gateway, channels, and AI providers are all working correctly.
+
+## Quick health commands
+
+```bash
+openclaw gateway status    # is the gateway running?
+openclaw status            # local summary: gateway, channels, sessions
+openclaw doctor            # config validation + channel probes + repair
+```
+
+### `openclaw status`
+
+Shows a compact local summary:
+
+- Gateway reachability and mode (local/remote)
+- Linked channel auth age and connectivity
+- Active sessions and recent activity
+- Available update (if newer version is published)
+
+Flags:
+
+| Flag | Effect |
+| ---- | ------ |
+| `--all` | Full local diagnosis — safe to paste for debugging |
+| `--deep` | Also probes the running gateway for per-channel health |
+
+### `openclaw health`
+
+Asks the running gateway for a full health snapshot via WebSocket:
+
+```bash
+openclaw health             # human-readable
+openclaw health --json      # structured JSON output
+openclaw health --timeout 5000  # 5s timeout (default: 10s)
+```
+
+Returns:
+- Per-channel connectivity probes
+- Session store summary
+- Linked credentials age
+- Probe duration
+
+Exits non-zero if the gateway is unreachable or any probe fails.
+
+### `openclaw doctor`
+
+The repair and validation tool. Checks config, channel state, model auth, service health, and offers fixes:
+
+```bash
+openclaw doctor             # interactive: prompts before applying fixes
+openclaw doctor --yes       # accept all recommended fixes without prompting
+openclaw doctor --repair    # apply recommended repairs silently
+openclaw doctor --deep      # also scan for stale/extra gateway installs
+```
+
+Doctor checks include:
+
+- Config file validation (unknown keys, invalid values)
+- Channel auth status and credential freshness
+- Model auth (OAuth expiry, API key presence)
+- Gateway service status (installed but not running)
+- Port collision on the default port `18789`
+- Security warnings (open DM policies, missing gateway auth token)
+- Legacy config migrations and on-disk state moves
+- File permission checks (`~/.openclaw/openclaw.json` should be `chmod 600`)
+
+## Channel-specific health
+
+### Send `/status` in-chat
+
+Send `/status` as a message in WhatsApp, Telegram, or WebChat to get a status reply without invoking the agent. Useful for verifying that the channel is routing messages end-to-end.
+
+### Channel logs
+
+```bash
+openclaw channels logs --channel whatsapp --follow
+openclaw channels logs --channel telegram
+```
+
+Filter for these log patterns when debugging channel connectivity:
+- `web-heartbeat` — WebSocket keepalive
+- `web-reconnect` — reconnect attempts
+- `web-auto-reply` — auto-reply triggers
+- `web-inbound` — incoming message handling
+
+### WhatsApp credentials
+
+```bash
+ls -l ~/.openclaw/credentials/whatsapp/<accountId>/creds.json
+```
+
+`creds.json` modification time should be recent. Stale or missing credentials mean the channel is logged out.
+
+**Relink flow** (when logged out or seeing status codes 409–515):
+
+```bash
+openclaw channels logout
+openclaw channels login --verbose
+```
+
+## Model provider health
+
+```bash
+openclaw models status          # current auth profiles and which is active
+openclaw models status --check  # exit code: 0=OK, 1=expired/missing, 2=expiring soon
+```
+
+Use `--check` in monitoring scripts and cron jobs to alert on expiring tokens.
+
+## Automated monitoring
+
+### Cron / systemd timer
+
+A minimal health-check script:
+
+```bash
+#!/bin/bash
+# /usr/local/bin/openclaw-healthcheck.sh
+set -euo pipefail
+
+openclaw health --json --timeout 5000 | jq -e '.status == "ok"' > /dev/null
+openclaw models status --check
+```
+
+Wire it into a systemd timer or cron job:
+
+```
+# /etc/cron.d/openclaw-health
+*/5 * * * * openclaw-user /usr/local/bin/openclaw-healthcheck.sh ||   systemctl --user restart openclaw-gateway
+```
+
+### OpenTelemetry / Prometheus
+
+For production deployments, enable diagnostics to export gateway health metrics to your observability stack. See [Logging](/admin/gateway/logging) for OTLP configuration.
+
+Key metrics to monitor:
+- `openclaw.message.processed` — message throughput and error rates
+- `openclaw.session.stuck` — sessions stuck in a state (indicates a hung run)
+- `openclaw.webhook.error` — channel webhook errors
+
+## Common failure patterns
+
+<AccordionGroup>
+  <Accordion title="Gateway unreachable">
+    ```bash
+    openclaw gateway status     # confirm it's not running
+    openclaw doctor             # diagnose service/config issues
+    ```
+
+    If the service is installed but stopped:
+
+    ```bash
+    systemctl --user start openclaw-gateway    # Linux
+    openclaw gateway start                     # macOS / manual
+    ```
+
+    If the port is in use:
+
+    ```bash
+    openclaw doctor             # reports port collisions and suggests fixes
+    lsof -i :18789              # identify what's using port 18789
+    ```
+  </Accordion>
+
+  <Accordion title="Channel shows 'logged out'">
+    The channel credentials have expired or been revoked. Relink:
+
+    ```bash
+    openclaw channels logout
+    openclaw channels login --verbose
+    ```
+
+    For WhatsApp: the phone that holds the linked account must be online and reachable during the relink.
+  </Accordion>
+
+  <Accordion title="No inbound messages from a channel">
+    Check these in order:
+
+    1. Channel is linked: `openclaw status --deep`
+    2. Sender is in the allowlist: check `channels.<channel>.allowFrom` in config
+    3. For group chats: verify `channels.<channel>.groups` and `mentionPatterns` in agent config
+    4. Logs show the webhook is firing: `openclaw channels logs --channel <name> --follow`
+    5. Gateway webhook URL is registered: re-run `openclaw channels login --channel <name>`
+  </Accordion>
+
+  <Accordion title="Model auth expiring or expired">
+    ```bash
+    openclaw models status          # see which profile is expiring
+    openclaw models status --check  # exit 2 = expiring, exit 1 = expired
+    ```
+
+    For API key auth — add the new key:
+    ```bash
+    echo 'ANTHROPIC_API_KEY=sk-ant-new-key' >> ~/.openclaw/.env
+    systemctl --user restart openclaw-gateway
+    ```
+
+    For subscription (setup-token) auth:
+    ```bash
+    claude setup-token
+    openclaw models auth paste-token --provider anthropic
+    ```
+  </Accordion>
+</AccordionGroup>

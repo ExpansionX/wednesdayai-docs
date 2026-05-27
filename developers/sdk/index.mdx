@@ -1,9 +1,144 @@
 ---
-title: "Plugin SDK reference"
-description: "The full public surface of openclaw/plugin-sdk."
+title: "Plugin SDK"
+description: "The stable API surface for WednesdayAI plugins: types, contracts, and how to extend the gateway."
 audience: developer
 ---
 
-# Plugin SDK reference
+# Plugin SDK
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+The plugin SDK is the stable API surface for WednesdayAI extensions. Plugins import from `openclaw/plugin-sdk` — never from core internals.
+
+## Installation
+
+The SDK is available as a peer dependency. Add it to your plugin's `devDependencies` or `peerDependencies`:
+
+```json
+{
+  "peerDependencies": {
+    "openclaw": ">=2026.3.2"
+  },
+  "devDependencies": {
+    "openclaw": "2026.3.2"
+  }
+}
+```
+
+Never add `openclaw` to `dependencies` — it must be the version installed by the gateway, not a separate copy.
+
+## Importing from the SDK
+
+```typescript
+import type { ChannelPlugin, ToolDefinition, HookContext } from "openclaw/plugin-sdk";
+```
+
+Do not import from `openclaw/src/...` or relative paths into core. Those are internal APIs that can change without notice.
+
+## Core types
+
+### `ChannelPlugin<TAccount>`
+
+The contract for channel adapter plugins:
+
+```typescript
+import type { ChannelPlugin } from "openclaw/plugin-sdk";
+
+const myChannel: ChannelPlugin<MyAccount> = {
+  id: "my-channel",
+  name: "My Channel",
+  // ... implement required adapter interfaces
+};
+
+export default myChannel;
+```
+
+### `ToolDefinition`
+
+Define a tool the agent can call:
+
+```typescript
+import { Type } from "@sinclair/typebox";
+import type { ToolDefinition } from "openclaw/plugin-sdk";
+
+export const searchTool: ToolDefinition = {
+  name: "my_search",
+  description: "Search for something.",
+  inputSchema: Type.Object({
+    query: Type.String({ description: "The search query." }),
+    limit: Type.Optional(Type.Number({ description: "Max results." })),
+  }),
+  async run({ query, limit = 5 }) {
+    // ... implementation
+    return { results: [] };
+  },
+};
+```
+
+### `HookContext`
+
+Passed to hook handlers:
+
+```typescript
+import type { HookContext } from "openclaw/plugin-sdk";
+
+export async function handler(ctx: HookContext): Promise<void> {
+  const { event, session, agent, gateway } = ctx;
+  // ...
+}
+```
+
+## Schema rules
+
+WednesdayAI uses `@sinclair/typebox` for tool input schemas. Pin to exact version `0.34.48`:
+
+```json
+{
+  "dependencies": {
+    "@sinclair/typebox": "0.34.48"
+  }
+}
+```
+
+Schema constraints:
+
+- No `Type.Union`, `anyOf`, `oneOf`, or `allOf` in tool input schemas
+- Use `Type.Optional(...)` instead of `... | null`
+- Use `stringEnum` / `optionalStringEnum` (Type.Unsafe) for string enumerations
+- No `any` in SDK exports — all exported types must be fully typed
+
+## Plugin manifest
+
+Each plugin package must have an `"openclaw"` key in `package.json`:
+
+```json
+{
+  "name": "@wednesdayai/my-plugin",
+  "version": "1.0.0",
+  "openclaw": {
+    "id": "my-plugin",
+    "displayName": "My Plugin",
+    "description": "Does something useful.",
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "apiKey": { "type": "string", "description": "API key for the service." }
+      }
+    }
+  }
+}
+```
+
+## Runtime and dependencies
+
+- **No `workspace:*` in `dependencies`** — your plugin must install cleanly with `npm install --omit=dev`.
+- Runtime deps go in `dependencies`; everything else in `devDependencies` or `peerDependencies`.
+- Extensions under `extensions/` in the repo are workspace packages with their own `package.json`. They are excluded from the root Oxlint config — manage your own linting.
+
+## Extending the SDK surface
+
+When you need a type or contract that is not yet exported from `plugin-sdk`:
+
+1. Do not import it from core internals — that creates a hard coupling.
+2. Open an issue or PR to add it to `src/plugin-sdk/` with proper documentation.
+3. Keep exports typed and documented. No `any`.
+
+See [Contributing](/developers/contributing) for the PR workflow.

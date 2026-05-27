@@ -1,9 +1,101 @@
 ---
-title: "Writing an agent tool"
-description: "Add new capabilities to the WednesdayAI agent loop."
+title: "Agent tools"
+description: "Define custom tools for the WednesdayAI agent to call: TypeBox schemas, handlers, and best practices."
 audience: developer
 ---
 
-# Writing an agent tool
+# Agent tools
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+Agent tools are functions the AI can call during a run. You define the schema, the gateway handles routing them to the model and invoking the handler.
+
+## Defining a tool
+
+Tools use `@sinclair/typebox` schemas for input validation. Pin to exact version `0.34.48`.
+
+```typescript
+import { Type } from "@sinclair/typebox";
+import type { ToolDefinition } from "openclaw/plugin-sdk";
+
+export const fetchUrlTool: ToolDefinition = {
+  name: "fetch_url",
+  description: "Fetch the contents of a URL and return the text.",
+  inputSchema: Type.Object({
+    url: Type.String({ description: "The URL to fetch." }),
+    timeout: Type.Optional(
+      Type.Number({ description: "Timeout in milliseconds. Default: 5000." })
+    ),
+  }),
+  async run({ url, timeout = 5000 }) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+    return { text: await res.text() };
+  },
+};
+```
+
+## Schema rules
+
+These constraints apply to all tool input schemas:
+
+| Rule | Example |
+| ---- | ------- |
+| No `Type.Union` | Use separate tools or optional fields instead |
+| No `anyOf` / `oneOf` / `allOf` | Same — structural unions confuse model tool use |
+| Use `Type.Optional(...)` | Not `T \| null` |
+| Use `stringEnum` for enumerations | `Type.Unsafe<"a" | "b">({ enum: ["a", "b"] })` |
+| No `format` as a raw property name | Some validators reject it |
+
+## Registering tools in a plugin
+
+Export your tools from the plugin's `index.ts` via the plugin manifest:
+
+```typescript
+import type { PluginDefinition } from "openclaw/plugin-sdk";
+import { fetchUrlTool } from "./tools/fetch-url.js";
+import { searchTool } from "./tools/search.js";
+
+const plugin: PluginDefinition = {
+  id: "my-plugin",
+  tools: [fetchUrlTool, searchTool],
+};
+
+export default plugin;
+```
+
+## Tool permissions
+
+Tools are gated by the agent's tool policy. Sensitive tools (file write, shell exec, browser) require explicit administrator opt-in. Design tool names and descriptions to be self-explanatory — they appear in the model's tool list and in the control panel.
+
+Tools that touch the filesystem or network should:
+- Accept explicit paths/URLs (not infer them from context)
+- Return structured data, not raw content when possible
+- Fail with a clear error message on bad input
+
+## Testing tools
+
+Test the handler directly — no need for a full gateway in unit tests:
+
+```typescript
+import { describe, expect, it } from "vitest";
+import { fetchUrlTool } from "./fetch-url.js";
+
+describe("fetchUrlTool", () => {
+  it("fetches a URL and returns text", async () => {
+    const result = await fetchUrlTool.run({ url: "https://example.com" });
+    expect(typeof result.text).toBe("string");
+    expect(result.text.length).toBeGreaterThan(0);
+  });
+});
+```
+
+```bash
+pnpm --filter @wednesdayai/my-plugin test:fast
+```
+
+## Best practices
+
+- **Single responsibility** — one tool per well-defined action. Avoid tools that do "everything".
+- **Clear descriptions** — the model sees your description when choosing tools. Be specific about what the tool does and when to use it.
+- **Idempotent where possible** — if the tool can be safely retried, make it idempotent.
+- **Structured return values** — return typed objects, not unstructured strings.
+- **Fail loudly** — throw with a clear message rather than returning empty/null on errors.

@@ -1,9 +1,205 @@
 ---
 title: "Troubleshooting"
-description: "Diagnose and fix common gateway and channel issues."
+description: "Diagnose and fix common gateway, channel, and provider issues."
 audience: admin
 ---
 
 # Troubleshooting
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+Start here when something is not working. Most issues are diagnosed in two commands:
+
+```bash
+openclaw doctor         # config, health, and repair
+openclaw status --deep  # gateway + channel probe
+```
+
+## Gateway not starting
+
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    ```bash
+    lsof -i :18789     # find what's using the port
+    ```
+
+    Change the port in `~/.openclaw/openclaw.json`:
+
+    ```json5
+    { gateway: { port: 18790 } }
+    ```
+
+    Then restart: `systemctl --user restart openclaw-gateway` (Linux) or `openclaw gateway start` (macOS/manual).
+  </Accordion>
+
+  <Accordion title="Unknown config keys">
+    The gateway refuses to start when there are unrecognised top-level keys in the config file:
+
+    ```bash
+    openclaw doctor --fix   # removes unknown keys, fills missing defaults
+    ```
+
+    Review the diff before restarting.
+  </Accordion>
+
+  <Accordion title="Systemd service installed but not running">
+    ```bash
+    systemctl --user status openclaw-gateway    # see the error
+    journalctl --user -u openclaw-gateway -n 50  # last 50 log lines
+    systemctl --user start openclaw-gateway
+    ```
+
+    If the service keeps crashing, run the gateway in the foreground to see the error:
+
+    ```bash
+    openclaw gateway --port 18789
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## `openclaw` command not found
+
+```bash
+node -v         # should be v22+
+npm prefix -g   # should be in your PATH
+```
+
+Add the global bin to your PATH:
+
+```bash
+echo 'export PATH="$(npm prefix -g)/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+openclaw --version
+```
+
+## Channel issues
+
+<AccordionGroup>
+  <Accordion title="WhatsApp: logged out or not receiving messages">
+    Check auth age:
+
+    ```bash
+    openclaw status --deep
+    ls -l ~/.openclaw/credentials/whatsapp/*/creds.json
+    ```
+
+    If credentials are stale or missing, relink:
+
+    ```bash
+    openclaw channels logout --channel whatsapp
+    openclaw channels login --channel whatsapp --verbose
+    ```
+
+    The phone holding the linked WhatsApp account must be online during relink.
+  </Accordion>
+
+  <Accordion title="WhatsApp: status codes 409–515 in logs">
+    These indicate a conflicting session (another WhatsApp Web session is open) or an auth problem.
+
+    ```bash
+    openclaw channels logout --channel whatsapp
+    # Close all other WhatsApp Web sessions in the browser
+    openclaw channels login --channel whatsapp
+    ```
+  </Accordion>
+
+  <Accordion title="Telegram / Discord / Slack: bot not responding">
+    1. Check that the bot token is still valid (not revoked in the provider console)
+    2. Verify the webhook is registered: `openclaw channels status --channel telegram`
+    3. Check the allowlist: `channels.telegram.allowFrom` must include the sender
+    4. Look at channel logs: `openclaw channels logs --channel telegram --follow`
+  </Accordion>
+
+  <Accordion title="No inbound messages from any channel">
+    1. Confirm the gateway is running and accessible: `openclaw gateway status`
+    2. Check `dmPolicy` — if set to `"disabled"` the agent won't respond to DMs
+    3. Check `allowFrom` — the sender may not be in the allowlist
+    4. Run `openclaw security audit` — open DM policies are flagged
+  </Accordion>
+</AccordionGroup>
+
+## AI provider issues
+
+<AccordionGroup>
+  <Accordion title="No credentials found / provider not responding">
+    ```bash
+    openclaw models status     # see which profiles are active
+    openclaw doctor            # check provider connectivity
+    ```
+
+    If the key is set in your shell but the daemon can't find it, it needs to be in `~/.openclaw/.env`:
+
+    ```bash
+    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.openclaw/.env
+    systemctl --user restart openclaw-gateway
+    ```
+  </Accordion>
+
+  <Accordion title="Rate limit errors">
+    Configure key rotation to spread load across multiple keys:
+
+    ```bash
+    # ~/.openclaw/.env
+    ANTHROPIC_API_KEYS=sk-ant-key1,sk-ant-key2
+    ```
+
+    The gateway retries automatically with the next key on 429 responses.
+  </Accordion>
+
+  <Accordion title="Anthropic: 'credential only authorized for Claude Code'">
+    Use an API key instead of the subscription setup-token:
+
+    ```bash
+    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.openclaw/.env
+    systemctl --user restart openclaw-gateway
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Control panel / web UI
+
+<AccordionGroup>
+  <Accordion title="Control panel not loading">
+    1. Confirm the gateway is running: `openclaw gateway status`
+    2. Open `http://127.0.0.1:18789/` — if this works but another URL does not, check your remote access config
+    3. Try: `openclaw dashboard` to open the correct URL automatically
+  </Accordion>
+
+  <Accordion title="WebSocket 1008 Unauthorized from browser">
+    Browsers cannot pass bearer tokens in WebSocket handshakes. Options:
+
+    - Use Tailscale Serve with `gateway.auth.allowTailscale: true`
+    - Use [trusted-proxy auth](/admin/gateway/authentication)
+    - Access via the WednesdayAI macOS app or CLI (they pass credentials correctly)
+  </Accordion>
+</AccordionGroup>
+
+## Logs and diagnostics
+
+```bash
+openclaw logs --follow           # live log tail
+openclaw logs --json             # structured JSON output
+journalctl --user -u openclaw-gateway -f   # systemd journal (Linux)
+```
+
+Useful log filters:
+
+```bash
+openclaw logs --follow | grep "error\|warn"
+openclaw channels logs --channel whatsapp --follow
+```
+
+If you need more detail:
+
+```bash
+OPENCLAW_LOG_LEVEL=debug openclaw gateway --port 18789
+```
+
+## Still stuck?
+
+```bash
+openclaw doctor --deep   # comprehensive scan including extra gateway installs
+```
+
+Read the output carefully — doctor usually identifies the fix. If not:
+
+- Check [GitHub Issues](https://github.com/ExpansionX/WednesdayAI-core/issues) for known problems
+- Ask in [Discord](https://discord.gg/clawd)

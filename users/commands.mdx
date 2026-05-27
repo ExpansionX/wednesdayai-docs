@@ -1,9 +1,113 @@
 ---
-title: "Commands and slash commands"
-description: "Built-in commands you can use in any conversation."
+title: "Slash commands"
+description: "Control WednesdayAI with slash commands: change models, adjust settings, run tools, and manage sessions."
 audience: user
 ---
 
-# Commands and slash commands
+# Slash commands
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+Commands start with `/` and are sent as standalone messages (or embedded in a message for inline shortcuts). They control the current session — switching models, adjusting reasoning depth, managing context, and more.
+
+<Note>
+Commands only work if you are on the allowlist. If a command has no effect, your administrator may need to grant you access.
+</Note>
+
+## Most useful commands
+
+### Session management
+
+| Command | Effect |
+| ------- | ------ |
+| `/reset` | Start a fresh conversation (new session) |
+| `/new` | Same as `/reset` |
+| `/new <model>` | Start fresh with a specific model |
+| `/compact [instructions]` | Summarise context and continue in a smaller window |
+| `/stop` | Stop the current running response |
+| `/restart` | Restart the agent |
+
+### Model and reasoning
+
+| Command | Effect |
+| ------- | ------ |
+| `/model <name>` | Switch AI model for this session |
+| `/think <level>` | Set reasoning depth: `off`, `low`, `medium`, `high`, `xhigh` |
+| `/verbose on/off` | Show or hide detailed tool output and reasoning |
+
+`/think` levels and aliases:
+- `/think off` — no extended reasoning
+- `/think medium` — balanced (alias: `/t medium`)
+- `/think high` — deeper reasoning, slower responses
+- `/think xhigh` — maximum reasoning
+
+### Information
+
+| Command | Effect |
+| ------- | ------ |
+| `/status` | Gateway status, active model, provider quota |
+| `/help` | List available commands |
+| `/whoami` | Show your sender ID |
+| `/context` | Show how context is being used |
+| `/usage tokens` | Show token count on each reply |
+| `/usage cost` | Summarise cost from session logs |
+
+### Tools and execution
+
+| Command | Effect |
+| ------- | ------ |
+| `/exec host=<target> security=<level>` | Configure tool execution policy |
+| `! <command>` | Run a shell command on the gateway host (if enabled) |
+| `/bash <command>` | Same as `! <command>` |
+| `/approve <id> allow-once` | Approve a pending tool execution |
+
+### Voice and output
+
+| Command | Effect |
+| ------- | ------ |
+| `/tts always` | Always send audio responses |
+| `/tts off` | Disable audio |
+| `/tts tagged` | Audio only for responses tagged with [voice] |
+
+### Sub-agents and sessions
+
+| Command | Effect |
+| ------- | ------ |
+| `/subagents list` | Show running sub-agents |
+| `/kill <id>` | Stop a specific sub-agent |
+| `/steer <id> <message>` | Send a steering message to a running sub-agent |
+
+### Skills
+
+| Command | Effect |
+| ------- | ------ |
+| `/skill <name> [input]` | Run a named skill |
+
+Skills are extensions — additional capabilities your admin has installed. Available skills vary by deployment.
+
+## Directives in messages
+
+Directives are commands embedded in a normal message. They are stripped before the AI sees the message and adjust the session settings:
+
+```
+/think high /verbose on
+Analyse this Python script and suggest improvements.
+```
+
+In a message with content, directives apply to that message only. In a directive-only message, they persist for the session.
+
+## Inline shortcuts
+
+These commands work when embedded in a message and are stripped before the AI sees the rest:
+
+- `/help` — trigger a help reply; rest of message continues normally
+- `/status` — trigger a status reply
+- `/whoami` — show your sender ID
+- `/commands` — list available commands
+
+Example: `Hey /status and what's the weather in Sydney today?`
+
+## Notes
+
+- Commands and directives only work for **authorized senders** — users on the allowlist or who have paired with the gateway.
+- Unauthorized users see `/...` tokens treated as plain text.
+- Most commands also work as native commands on Discord and Telegram (tap the `/` button in the chat UI).
+- `/verbose` and `/reasoning` can expose internal tool output — keep them off in shared group chats.

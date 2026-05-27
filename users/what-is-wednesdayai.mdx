@@ -1,9 +1,57 @@
 ---
 title: "What is WednesdayAI?"
-description: "WednesdayAI connects your favourite chat apps to a personal AI assistant."
+description: "WednesdayAI is a self-hosted AI gateway that connects your chat apps to AI agents."
 audience: user
 ---
 
 # What is WednesdayAI?
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI is a **self-hosted AI gateway**. It runs on your own machine (or a server you control) and connects your favorite messaging apps — WhatsApp, Telegram, iMessage, Signal, Slack, Discord, and more — to AI agents.
+
+You message it the same way you message anyone else. WednesdayAI handles the rest: routing your message to an AI model, running any tools the agent needs, and sending a reply back to you.
+
+## What can it do?
+
+- **Chat with AI** from any messaging app you already use — no new app to install
+- **Use tools** — the agent can run code, search the web, read and write files, control a browser, and more
+- **Remember context** across a conversation — sessions persist so the agent knows what you were working on
+- **Run on your own hardware** — your data stays on your machine, your rules
+- **Work across multiple channels** at once — the same agent responds whether you message it on WhatsApp or Telegram
+
+## How it works
+
+Your messages travel through a single **gateway** process that your administrator runs. The gateway:
+
+1. Receives your message from a connected channel (WhatsApp, Telegram, etc.)
+2. Routes it to the configured AI agent and model
+3. Runs any tool calls the agent makes
+4. Sends the reply back to you
+
+The gateway is the single source of truth for conversations, sessions, and channel connections. You never have to think about it — it just works.
+
+## What do you need?
+
+As a user, nothing special. You need:
+
+- An account on a supported messaging platform (WhatsApp, Telegram, etc.)
+- To be paired with the gateway by your admin (or yourself, if you're self-hosting)
+- That's it — the AI is ready to use via the channel you already have
+
+If you're setting up WednesdayAI for yourself, start with [Getting started](/admin/getting-started) in the Administrators section.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Send your first message" href="/users/pairing/first-channel" icon="message-circle">
+    Get paired and send your first AI message.
+  </Card>
+  <Card title="Messaging basics" href="/users/messaging" icon="send">
+    How to have a conversation, reset context, and get status.
+  </Card>
+  <Card title="Slash commands" href="/users/commands" icon="terminal">
+    Control the AI with /commands — change models, adjust settings, run tools.
+  </Card>
+  <Card title="Available tools" href="/users/tools" icon="wrench">
+    What the agent can do for you: web search, code execution, file access, and more.
+  </Card>
+</CardGroup>

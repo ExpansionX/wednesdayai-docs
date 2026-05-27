@@ -1,9 +1,100 @@
 ---
-title: "Built-in tools"
-description: "What your AI assistant can do for you out of the box."
+title: "Available tools"
+description: "What the WednesdayAI agent can do: web search, code execution, file access, browser control, and more."
 audience: user
 ---
 
-# Built-in tools
+# Available tools
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI agents can use tools to take actions on your behalf — searching the web, running code, reading and writing files, and more. Tools run automatically when the agent decides they are needed; you don't have to ask explicitly.
+
+<Note>
+Which tools are available depends on how your administrator has configured the gateway. Some tools (like shell execution and browser control) require explicit opt-in.
+</Note>
+
+## Common tools
+
+### Web search
+
+The agent can search the web for current information. Just ask naturally:
+
+> "What is the current price of NVDA stock?"
+> "Find the latest Node.js release notes."
+
+Search tools: Brave Search, Perplexity, and others depending on your deployment.
+
+### Code execution
+
+The agent can write and run code, showing you the output:
+
+> "Write a Python script to parse this CSV and find the top 10 values."
+> "Run this shell command and tell me what the output means."
+
+Code execution may require administrator approval depending on your security policy.
+
+### File access
+
+On channels where file tools are enabled, the agent can read and write files on the gateway host:
+
+> "Read my `notes.txt` file and summarise it."
+> "Create a new Markdown file with the outline we just discussed."
+
+### Browser
+
+When browser tools are enabled, the agent can navigate websites, fill forms, take screenshots, and extract information:
+
+> "Go to example.com and extract the pricing table."
+> "Take a screenshot of my dashboard."
+
+### Memory
+
+The agent maintains session memory — it remembers what you said earlier in a conversation. For long-running context across sessions, ask the agent to remember something:
+
+> "Remember that my preferred language is TypeScript."
+> "What did I tell you about my project last week?"
+
+### Cron / scheduling
+
+Schedule tasks to run at a later time:
+
+> "Remind me in 2 hours to follow up on the Jenkins build."
+> "Run this command every day at 9am."
+
+## How tools work
+
+Tools run automatically — the agent decides when to use them based on your request. If a tool requires your approval (for example, shell execution with `ask=on`), the agent will pause and ask before running.
+
+To see what tools are active:
+
+```
+/exec
+```
+
+To approve a pending tool call:
+
+```
+/approve <id> allow-once
+```
+
+## Tool output
+
+By default, the agent summarises tool results in its reply. To see the full output:
+
+```
+/verbose on
+```
+
+Turn it off when you are done:
+
+```
+/verbose off
+```
+
+## Requesting specific tools
+
+You can ask the agent to use a specific tool or approach:
+
+> "Search the web for this, don't use your training data."
+> "Use the browser to check that URL for me."
+
+The agent will use the tool if it is available and you have permission.

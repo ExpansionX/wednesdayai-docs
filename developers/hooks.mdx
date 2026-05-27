@@ -1,9 +1,143 @@
 ---
-title: "Writing a hook"
-description: "Add behaviour to the WednesdayAI lifecycle without touching core."
+title: "Hooks"
+description: "Build event-driven automation with hooks: run code when sessions start, reset, or end."
 audience: developer
 ---
 
-# Writing a hook
+# Hooks
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+Hooks are small TypeScript handlers that run inside the gateway when events fire — `/new`, `/reset`, `/stop`, agent lifecycle events, and more.
+
+## When to use hooks vs plugins
+
+- **Hooks:** react to gateway events, run lightweight automation, no new tools or commands
+- **Plugins:** add new tools, commands, providers, or channel integrations
+
+If you just need to run some code when a session resets, a hook is the right choice.
+
+## Bundled hooks
+
+WednesdayAI ships with four bundled hooks:
+
+| Hook | Event | Effect |
+| ---- | ----- | ------ |
+| `session-memory` | `command:new` | Saves session context to the agent workspace |
+| `bootstrap-extra-files` | `agent:bootstrap` | Injects extra files into the workspace at startup |
+| `command-logger` | all commands | Logs all commands to `~/.openclaw/logs/commands.log` |
+| `boot-md` | gateway start | Runs `BOOT.md` when the gateway starts |
+
+Enable a bundled hook:
+
+```bash
+openclaw hooks list          # see all available hooks
+openclaw hooks enable session-memory
+openclaw hooks info session-memory
+```
+
+## Hook structure
+
+Each hook is a directory:
+
+```
+my-hook/
+├── HOOK.md          # metadata + docs
+└── handler.ts       # TypeScript handler
+```
+
+**`HOOK.md` frontmatter:**
+
+```markdown
+---
+name: my-hook
+description: "Does something useful when the session resets"
+metadata:
+  openclaw:
+    emoji: "💾"
+    events: ["command:new", "command:reset"]
+---
+```
+
+**`handler.ts`:**
+
+```typescript
+import type { HookContext } from "openclaw/plugin-sdk";
+
+export async function handler(ctx: HookContext): Promise<void> {
+  const { event, session, agent } = ctx;
+
+  if (event === "command:new") {
+    // save something, call an API, write a file, etc.
+    await agent.workspace.write("last-reset.txt", new Date().toISOString());
+  }
+}
+```
+
+## Hook discovery
+
+Hooks are auto-discovered from three directories (highest precedence first):
+
+1. `<workspace>/hooks/` — per-agent hooks
+2. `~/.openclaw/hooks/` — user-installed shared hooks
+3. `<openclaw>/dist/hooks/bundled/` — bundled hooks
+
+## Installing hook packs
+
+Hook packs are npm packages that export multiple hooks:
+
+```bash
+openclaw hooks install @wednesdayai/my-hook-pack
+```
+
+Or install a local hook:
+
+```bash
+openclaw hooks install ./path/to/my-hook
+```
+
+`openclaw hooks install` runs `npm install --ignore-scripts` — keep dependencies to pure JS/TS with no postinstall build steps.
+
+## Available events
+
+| Event | Trigger |
+| ----- | ------- |
+| `command:new` | User sends `/new` or `/reset` |
+| `command:stop` | User sends `/stop` |
+| `command:compact` | User sends `/compact` |
+| `agent:bootstrap` | Agent workspace is initialised |
+| `agent:start` | Agent session starts |
+| `agent:end` | Agent session ends |
+| `gateway:start` | Gateway process starts |
+
+## Enabling hooks in config
+
+Hooks are enabled via the CLI. If you are migrating from a legacy config-based setup:
+
+```json5
+{
+  hooks: {
+    internal: {
+      enabled: true,
+      entries: {
+        "my-hook": { enabled: true },
+      },
+    },
+  },
+}
+```
+
+For new hooks, prefer the CLI:
+
+```bash
+openclaw hooks enable my-hook
+openclaw hooks check
+```
+
+## Troubleshooting hooks
+
+```bash
+openclaw hooks list            # see enabled/disabled status
+openclaw hooks info my-hook    # check requirements and errors
+openclaw logs --follow | grep hook   # live log tail for hook activity
+```
+
+If a hook is not running, restart the gateway after enabling it.

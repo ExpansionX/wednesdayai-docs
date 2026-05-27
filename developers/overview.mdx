@@ -1,9 +1,93 @@
 ---
-title: "Extension points overview"
-description: "What hooks, plugins, the plugin SDK, and channel adapters each own."
+title: "Developer overview"
+description: "Extend WednesdayAI: plugins, hooks, custom channels, and the plugin SDK."
 audience: developer
 ---
 
-# Extension points overview
+# Developer overview
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI is built to be extended. The core is intentionally lean; new capabilities belong in plugins, hooks, and channel adapters rather than in core.
+
+This section covers how to build extensions for WednesdayAI.
+
+## Architecture
+
+```
+Core gateway (src/)
+├── Plugin SDK (src/plugin-sdk/)  ← stable API surface
+├── Hooks (src/hooks/)            ← event-driven automation
+└── Extensions (extensions/)     ← channel plugins, tool plugins
+```
+
+**Key principle:** everything that can be a plugin, should be. Hooks and plugins interact with the gateway through a stable SDK contract; they do not import from core internals.
+
+## Extension types
+
+<CardGroup cols={2}>
+  <Card title="Plugins" href="/developers/plugins/your-first-plugin" icon="puzzle">
+    Add new tools, providers, or capabilities. Published as npm packages under `@wednesdayai/*`.
+  </Card>
+  <Card title="Hooks" href="/developers/hooks" icon="zap">
+    React to gateway events: session start/reset, commands, lifecycle. Small TypeScript handlers.
+  </Card>
+  <Card title="Channel adapters" href="/developers/channel-adapters" icon="plug">
+    Connect a new messaging platform as a first-class channel.
+  </Card>
+  <Card title="Plugin SDK" href="/developers/sdk" icon="layers">
+    The stable API surface for plugins. Types, interfaces, and contracts.
+  </Card>
+</CardGroup>
+
+## Tech stack
+
+| Layer | Technology |
+| ----- | ---------- |
+| Language | TypeScript 5.9, strict ESM |
+| Runtime | Node.js 22+ |
+| Package manager | pnpm 10.23 |
+| Build | tsdown + post-build tsx scripts |
+| Tests | Vitest v4 + V8 coverage |
+| Linter | Oxlint v1.50 |
+
+Full tech stack: [CLAUDE.md §2](https://github.com/ExpansionX/WednesdayAI-core/blob/main/AGENTS.md).
+
+## Plugin scopes
+
+WednesdayAI uses two npm scopes:
+
+- **`@wednesdayai/*`** — new extensions built for this fork. Use this for anything new.
+- **`@openclaw/*`** — inherited extensions from the fork base. Publish only if the package already exists under this scope on npm.
+
+## Getting started
+
+<Steps>
+  <Step title="Clone the repo">
+    ```bash
+    git clone https://github.com/ExpansionX/WednesdayAI-core.git
+    cd WednesdayAI-core
+    pnpm install
+    pnpm build
+    ```
+  </Step>
+  <Step title="Run the tests">
+    ```bash
+    pnpm test:fast    # unit tests (fast)
+    pnpm test         # full suite
+    ```
+  </Step>
+  <Step title="Read the plugin guide">
+    Start with [Your first plugin](/developers/plugins/your-first-plugin) for a worked example, or [Hooks](/developers/hooks) for simpler event-driven automation.
+  </Step>
+</Steps>
+
+## Design principles
+
+1. **Lean core** — if a capability can live in a plugin, it should. Don't add to core.
+2. **Stable contracts** — plugins import from `openclaw/plugin-sdk`, never from core internals.
+3. **No `workspace:*` in `dependencies`** — `npm install --omit=dev` in plugin dirs must work.
+4. **Naming** — user-facing text uses `WednesdayAI`; code, config keys, and imports use `openclaw`.
+5. **No `any` in SDK exports** — the plugin SDK surface must be fully typed.
+
+## Contributing
+
+See [Contributing](/developers/contributing) for the full workflow, PR checklist, and maintainer guidelines.

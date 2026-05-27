@@ -1,9 +1,227 @@
 ---
-title: "Remote access and networking"
-description: "Bind modes, Tailscale, reverse proxies, and port configuration."
+title: "Remote access"
+description: "Reach the WednesdayAI control panel and gateway from outside localhost: SSH tunnels, Tailscale Serve, and LAN binding."
 audience: admin
 ---
 
-# Remote access and networking
+# Remote access
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+By default the WednesdayAI gateway binds to **loopback** (`127.0.0.1`) and is only reachable from the machine it runs on. This is intentional — it avoids exposing the gateway to your local network or the internet before you have auth configured.
+
+This page explains the supported ways to access the gateway remotely.
+
+<Info>
+**Recommended path:** Tailscale Serve. It gives you HTTPS, a stable hostname, and Tailscale's identity-based access control without changing the gateway bind address. The gateway stays on loopback.
+</Info>
+
+## Option 1 — Tailscale Serve (recommended)
+
+Tailscale Serve creates an HTTPS endpoint on your tailnet (your private network of Tailscale-connected devices) that proxies to the local gateway. The gateway itself stays bound to loopback; Tailscale handles routing and TLS.
+
+**Prerequisites:** Tailscale installed and logged in on the gateway host.
+
+**Config** (`~/.openclaw/openclaw.json`):
+
+```json5
+{
+  gateway: {
+    bind: "loopback",
+    tailscale: { mode: "serve" },
+  },
+}
+```
+
+After restarting the gateway, the control panel is available at `https://<hostname>.ts.net/` from any device on your tailnet.
+
+**Optional: allow Tailscale identity auth** (skip token prompts on the control panel for tailnet devices):
+
+```json5
+{
+  gateway: {
+    bind: "loopback",
+    tailscale: { mode: "serve" },
+    auth: { allowTailscale: true },
+  },
+}
+```
+
+When `allowTailscale: true`, control panel WebSocket connections from tailnet devices are accepted without a token. HTTP API endpoints still require token/password auth. Disable this if untrusted code may run on the gateway host.
+
+**Restart after config changes:**
+
+<Tabs>
+  <Tab title="Linux (systemd)">
+    ```bash
+    systemctl --user restart openclaw-gateway
+    ```
+  </Tab>
+  <Tab title="macOS / manual">
+    ```bash
+    openclaw gateway stop && openclaw gateway start
+    ```
+  </Tab>
+</Tabs>
+
+## Option 2 — SSH tunnel
+
+An SSH tunnel forwards the gateway's loopback port to your local machine over an encrypted SSH connection. This works with any SSH access and requires no changes to the gateway config.
+
+On your **local machine** (laptop/desktop), run:
+
+```bash
+ssh -N -L 18789:127.0.0.1:18789 user@gateway-host
+```
+
+With the tunnel open, `http://127.0.0.1:18789/` on your local machine reaches the remote gateway.
+
+**Keep the tunnel alive:**
+
+```bash
+# autossh keeps the tunnel up across reconnects
+autossh -M 0 -N -o "ServerAliveInterval 30" -L 18789:127.0.0.1:18789 user@gateway-host
+```
+
+**macOS app (automatic tunnel management):**  
+The WednesdayAI macOS menubar app has built-in SSH tunnel support. Go to **Settings → General → "WednesdayAI runs on"** and select **Remote over SSH**. The app manages the tunnel and reconnects automatically.
+
+## Option 3 — Bind to tailnet IP directly
+
+If you prefer the gateway to listen on your Tailscale IP rather than using Tailscale Serve:
+
+```json5
+{
+  gateway: {
+    bind: "tailnet",
+    auth: {
+      mode: "token",
+      token: "replace-with-a-strong-token",
+    },
+  },
+}
+```
+
+The gateway listens on your tailnet IP at port 18789. Access the control panel at `http://<tailscale-ip>:18789/` from any tailnet device.
+
+<Warning>
+When binding to a non-loopback address, auth is **required**. Set a token in config or via `OPENCLAW_GATEWAY_TOKEN` env var. The gateway will refuse to start without auth when `bind` is non-loopback.
+</Warning>
+
+Loopback (`http://127.0.0.1:18789/`) will not work in this mode — connect via the tailnet IP.
+
+## Option 4 — LAN binding
+
+For trusted home networks where every device on the LAN should have access:
+
+```json5
+{
+  gateway: {
+    bind: "lan",
+    auth: {
+      mode: "token",
+      token: "replace-with-a-strong-token",
+    },
+  },
+}
+```
+
+The gateway binds to the LAN IP. Access at `http://<lan-ip>:18789/` from any device on the network.
+
+**Not recommended for untrusted networks** — use Tailscale or SSH tunnels instead.
+
+## Public internet access (Tailscale Funnel)
+
+Tailscale Funnel makes the gateway reachable from the open internet via a `*.ts.net` HTTPS URL. Because anyone can reach it, a shared password is required.
+
+```json5
+{
+  gateway: {
+    bind: "loopback",
+    tailscale: { mode: "funnel" },
+    auth: { mode: "password" },
+  },
+}
+```
+
+Set the password via environment variable (avoid storing secrets in config files):
+
+```bash
+echo 'OPENCLAW_GATEWAY_PASSWORD=replace-me' >> ~/.openclaw/.env
+```
+
+The gateway will be available at `https://<hostname>.ts.net/`.
+
+## Persisting a remote target in the CLI
+
+If you regularly run CLI commands against a remote gateway, add the target to your config so you don't have to pass `--url` every time:
+
+```json5
+{
+  gateway: {
+    mode: "remote",
+    remote: {
+      url: "ws://127.0.0.1:18789",   // adjust to your tunnel/tailnet URL
+      token: "your-token",
+    },
+  },
+}
+```
+
+With this in place, commands like `openclaw gateway status`, `openclaw models status`, and `openclaw message send` all reach the remote gateway transparently.
+
+## Security principles
+
+| Scenario | Recommended approach |
+| -------- | -------------------- |
+| Personal use, remote from your own devices | Tailscale Serve + `allowTailscale: true` |
+| Personal use, minimal setup | SSH tunnel |
+| Team or multi-user access | Tailscale Serve + token auth, or trusted-proxy auth |
+| Public access (uncommon) | Tailscale Funnel + shared password |
+| Air-gapped / on-prem LAN | `bind: "lan"` + token auth + firewall |
+
+**Never expose the gateway on `bind: "lan"` or `bind: "custom"` without a token or password** — unauthenticated non-loopback binds are rejected at startup.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Control panel shows 'Unable to connect'">
+    The gateway is not reachable at the expected address.
+
+    1. Confirm the gateway is running: `openclaw gateway status` (on the gateway host)
+    2. If using SSH tunnel: check the tunnel is up (`ssh -N -L ...` process is running)
+    3. If using Tailscale: verify both devices are on the same tailnet (`tailscale status`)
+    4. Check the configured port matches: `openclaw doctor` on the gateway host shows the active port
+  </Accordion>
+
+  <Accordion title="WebSocket 1008 Unauthorized from a browser">
+    Browsers cannot send bearer tokens in WebSocket handshake headers.
+
+    Options:
+    - Use Tailscale Serve with `allowTailscale: true` (auth via tailnet identity)
+    - Use trusted-proxy auth (see [Authentication](/admin/gateway/authentication))
+    - Connect from the macOS app or CLI, which can pass credentials correctly
+  </Accordion>
+
+  <Accordion title="Gateway refuses to start after changing bind">
+    If you changed `bind` to a non-loopback value without setting auth, the gateway rejects the config. Add a token or password:
+
+    ```json5
+    {
+      gateway: {
+        bind: "lan",
+        auth: { mode: "token", token: "replace-me" },
+      },
+    }
+    ```
+
+    Or set via env: `OPENCLAW_GATEWAY_TOKEN=replace-me`
+  </Accordion>
+
+  <Accordion title="Tailscale Serve not showing HTTPS URL">
+    Run `tailscale serve status` to check what Tailscale has configured. If nothing shows, ensure Tailscale is running (`tailscale status`) and the gateway has been started at least once with `tailscale.mode: "serve"`.
+
+    Manual setup:
+    ```bash
+    tailscale serve 18789
+    ```
+  </Accordion>
+</AccordionGroup>

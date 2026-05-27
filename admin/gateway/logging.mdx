@@ -1,9 +1,231 @@
 ---
-title: "Logging and observability"
-description: "Log levels, file output, structured logging, and observability."
+title: "Logging"
+description: "Where WednesdayAI logs live, how to read them, log level configuration, and OpenTelemetry export."
 audience: admin
 ---
 
-# Logging and observability
+# Logging
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI logs in two places:
+
+- **File logs** — JSON lines written by the gateway to a rolling log file.
+- **Console output** — structured, colorized output in terminals and the control panel.
+
+## Where logs live
+
+The gateway writes a rolling log file at:
+
+```
+/tmp/openclaw/openclaw-YYYY-MM-DD.log
+```
+
+<Warning>
+`/tmp` is periodically purged by the OS. For persistent log retention, override the log path to a stable location.
+</Warning>
+
+Override the log path in `~/.openclaw/openclaw.json`:
+
+```json5
+{
+  logging: {
+    file: "~/.openclaw/logs/openclaw.log",
+  },
+}
+```
+
+## Reading logs
+
+### Live tail (recommended)
+
+```bash
+openclaw logs --follow
+```
+
+The CLI tails the gateway log file via RPC and formats entries in real time.
+
+**Output flags:**
+
+| Flag | Effect |
+| ---- | ------ |
+| `--json` | Line-delimited JSON, one event per line |
+| `--plain` | Force plain text (no colors) |
+| `--no-color` | Disable ANSI colors in TTY mode |
+
+In `--json` mode each line has a `type` field:
+- `meta` — stream metadata (file path, cursor, size)
+- `log` — parsed log entry
+- `notice` — truncation or rotation hints
+- `raw` — unparsed line (malformed JSON)
+
+### Control panel
+
+The control panel's **Logs** tab tails the same file. Access it at `http://localhost:18789/` → Logs.
+
+### Channel-specific logs
+
+```bash
+openclaw channels logs --channel whatsapp
+openclaw channels logs --channel telegram --follow
+```
+
+### Systemd journal (Linux)
+
+If the gateway runs as a systemd service:
+
+```bash
+journalctl --user -u openclaw-gateway -f
+journalctl --user -u openclaw-gateway --since "1 hour ago"
+```
+
+## Configuration
+
+All logging settings live under `logging` in `~/.openclaw/openclaw.json`. Most changes apply immediately (hot-reload); log file path changes require a restart.
+
+```json5
+{
+  logging: {
+    level: "info",              // file log verbosity
+    file: "/tmp/openclaw/openclaw-YYYY-MM-DD.log",
+    consoleLevel: "info",       // console verbosity
+    consoleStyle: "pretty",     // pretty | compact | json
+    redactSensitive: "tools",   // off | tools
+    redactPatterns: ["sk-.*"],  // additional regex patterns to redact
+  },
+}
+```
+
+### Log levels
+
+Available levels (least to most verbose): `error` → `warn` → `info` → `debug` → `trace`
+
+**Precedence** (first wins):
+1. `--log-level <level>` CLI flag
+2. `OPENCLAW_LOG_LEVEL` env var
+3. `logging.level` / `logging.consoleLevel` in config
+
+To temporarily raise verbosity for a single command without editing config:
+
+```bash
+OPENCLAW_LOG_LEVEL=debug openclaw gateway status
+openclaw --log-level debug gateway run
+```
+
+`--verbose` affects only console output; it does not change file log levels.
+
+### Console styles
+
+| Style | Description |
+| ----- | ----------- |
+| `pretty` | Colorized, timestamped, human-readable (default) |
+| `compact` | Tighter output — good for long sessions |
+| `json` | JSON per line — for log processors and pipelines |
+
+### Redaction
+
+`redactSensitive: "tools"` (default) redacts sensitive-looking values from tool call summaries in **console output**. File logs and OTLP exports are not affected.
+
+Add custom patterns to `redactPatterns` to redact additional secrets:
+
+```json5
+{
+  logging: {
+    redactPatterns: ["sk-.*", "Bearer .*", "token=[A-Za-z0-9]+"],
+  },
+}
+```
+
+## OpenTelemetry export
+
+WednesdayAI can export telemetry — metrics, traces, and logs — via **OTLP/HTTP** to any OpenTelemetry-compatible collector (Grafana, Jaeger, Honeycomb, Datadog, etc.).
+
+### Enable diagnostics
+
+```json5
+{
+  diagnostics: {
+    enabled: true,
+    otel: {
+      endpoint: "http://otel-collector:4318",  // your OTLP/HTTP endpoint
+      sampleRate: 1.0,                          // 0.0–1.0, root spans only
+      flushIntervalMs: 5000,                    // min 1000ms
+      logs: false,                              // true to export logs over OTLP
+    },
+  },
+}
+```
+
+Or via standard OpenTelemetry env vars:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+```
+
+### What gets exported
+
+**Metrics** (counters + histograms):
+
+| Metric | Description |
+| ------ | ----------- |
+| `openclaw.message.queued` | Messages enqueued per channel |
+| `openclaw.message.processed` | Messages processed, by outcome |
+| `openclaw.message.duration_ms` | Processing latency histogram |
+| `openclaw.model.usage` | Token usage, cost, latency per model/provider |
+| `openclaw.webhook.received` | Webhook ingress per channel |
+| `openclaw.queue.lane.*` | Queue depth, wait time, task completion |
+| `openclaw.session.stuck` | Sessions stuck in a state |
+
+**Traces**: `openclaw.model.usage`, `openclaw.webhook.processed`, `openclaw.message.processed`
+
+**Logs**: exported over OTLP when `diagnostics.otel.logs: true`. Console redaction does **not** apply to OTLP log export.
+
+### Sampling and flushing
+
+- `diagnostics.otel.sampleRate`: 0.0 (none) to 1.0 (all). Applies to root spans only.
+- `diagnostics.otel.flushIntervalMs`: how often metrics are flushed. Minimum 1000ms.
+- High-volume installs should use a local OTel collector with sampling/filtering.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Log file is empty">
+    1. Confirm the gateway is running: `openclaw gateway status`
+    2. Check the configured file path: `openclaw doctor`
+    3. Check write permissions on the log directory
+    4. Verify the gateway process has started since the last config change
+  </Accordion>
+
+  <Accordion title="`openclaw logs` says Gateway is unreachable">
+    The CLI cannot connect to the gateway RPC socket.
+
+    ```bash
+    openclaw doctor     # diagnose connectivity and config issues
+    openclaw gateway status
+    ```
+
+    If the gateway is running but logs still fail, check that `gateway.rpc` is not disabled in config.
+  </Accordion>
+
+  <Accordion title="Need more detail for debugging">
+    Temporarily raise the log level without editing config:
+
+    ```bash
+    OPENCLAW_LOG_LEVEL=debug openclaw gateway --port 18789
+    ```
+
+    Or for a running daemon:
+
+    ```bash
+    # Edit config hot-reload
+    jq '.logging.level = "debug"' ~/.openclaw/openclaw.json > /tmp/oc.json && mv /tmp/oc.json ~/.openclaw/openclaw.json
+    ```
+
+    The gateway watches the config file and applies level changes immediately. No restart needed.
+  </Accordion>
+
+  <Accordion title="OTLP export not working">
+    1. Confirm diagnostics are enabled: `openclaw doctor`
+    2. Check the endpoint is reachable from the gateway host: `curl -v http://otel-collector:4318/v1/metrics`
+    3. Check for OTLP errors in the gateway log: `openclaw logs --follow | grep otlp`
+    4. If the endpoint already includes `/v1/traces` or `/v1/metrics`, it is used as-is. Don't double-append the path.
+  </Accordion>
+</AccordionGroup>

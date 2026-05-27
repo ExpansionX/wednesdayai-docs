@@ -1,9 +1,187 @@
 ---
 title: "Upgrading and migrating"
-description: "How to upgrade WednesdayAI safely."
+description: "Update WednesdayAI safely, roll back when needed, and migrate to a new machine."
 audience: admin
 ---
 
 # Upgrading and migrating
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI releases frequently. This page covers upgrading in place, rolling back after a bad update, and migrating your installation to a new machine.
+
+## Before you upgrade
+
+1. **Know your install method** — global npm/pnpm install, or from source.
+2. **Know how your gateway runs** — foreground terminal, systemd service (Linux), or macOS menubar app.
+3. **Snapshot your config** (takes 10 seconds):
+
+   ```bash
+   cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak
+   ```
+
+## Upgrade (recommended: installer script)
+
+Re-run the installer — it detects your existing installation, upgrades in place, and runs `openclaw doctor` afterward:
+
+```bash
+curl -fsSL https://wednesdayai.dev/install.sh | bash
+```
+
+Skip re-running the onboarding wizard:
+
+```bash
+curl -fsSL https://wednesdayai.dev/install.sh | bash -s -- --no-onboard
+```
+
+For **source installs**:
+
+```bash
+curl -fsSL https://wednesdayai.dev/install.sh | bash -s -- --install-method git --no-onboard
+```
+
+The installer pulls the latest commit (only if the repo is clean) and rebuilds.
+
+## Upgrade (manual)
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install -g openclaw@latest
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add -g openclaw@latest
+    pnpm approve-builds -g     # if prompted for build script approval
+    ```
+  </Tab>
+  <Tab title="From source">
+    ```bash
+    cd /path/to/wednesdayai-core
+    git pull --rebase
+    pnpm install
+    pnpm build
+    ```
+  </Tab>
+</Tabs>
+
+## After upgrading
+
+```bash
+openclaw --version       # confirm the new version
+openclaw doctor          # check for config migrations and channel health
+openclaw gateway restart # apply the new binary
+openclaw status          # verify everything is running
+```
+
+## Update channels
+
+```bash
+openclaw update --channel stable   # production releases (default)
+openclaw update --channel beta     # pre-release builds
+openclaw update --channel dev      # bleeding edge
+```
+
+Pin to a specific version:
+
+```bash
+npm install -g openclaw@2026.4.0
+```
+
+## Auto-updater (optional)
+
+The gateway can update itself on a schedule. Disabled by default:
+
+```json5
+{
+  update: {
+    channel: "stable",
+    auto: {
+      enabled: true,
+      stableDelayHours: 6,      // wait before applying stable releases
+      stableJitterHours: 12,    // spread rollout window
+    },
+  },
+}
+```
+
+Preview what an update would do without applying it:
+
+```bash
+openclaw update --dry-run
+```
+
+## Rolling back
+
+If an update breaks something, pin to the last known-good version:
+
+<Tabs>
+  <Tab title="npm / pnpm">
+    ```bash
+    npm install -g openclaw@<last-good-version>
+    openclaw doctor
+    openclaw gateway restart
+    ```
+
+    Find published versions: `npm view openclaw versions --json`
+  </Tab>
+  <Tab title="From source">
+    ```bash
+    cd /path/to/wednesdayai-core
+    # Roll back to a specific date
+    git fetch origin
+    git checkout "$(git rev-list -n 1 --before=\"2026-04-01\" origin/main)"
+    pnpm install && pnpm build
+    openclaw gateway restart
+    ```
+
+    Return to latest later:
+    ```bash
+    git checkout main && git pull
+    pnpm install && pnpm build
+    ```
+  </Tab>
+</Tabs>
+
+## Migrating to a new machine
+
+### Step 1 — Export from old machine
+
+```bash
+# Config
+cp ~/.openclaw/openclaw.json ~/openclaw-config-backup.json
+
+# Credentials (channel tokens, provider auth)
+tar czf ~/openclaw-credentials-backup.tgz ~/.openclaw/credentials/
+
+# Agent sessions (optional — can be large)
+tar czf ~/openclaw-sessions-backup.tgz ~/.openclaw/agents/
+```
+
+### Step 2 — Install on new machine
+
+Follow [Getting started](/admin/getting-started) to install and run the onboarding wizard. Stop the gateway after onboarding completes.
+
+### Step 3 — Restore on new machine
+
+```bash
+# Config
+cp ~/openclaw-config-backup.json ~/.openclaw/openclaw.json
+
+# Credentials
+tar xzf ~/openclaw-credentials-backup.tgz -C ~/
+
+# Sessions (optional)
+tar xzf ~/openclaw-sessions-backup.tgz -C ~/
+```
+
+### Step 4 — Verify
+
+```bash
+openclaw doctor           # validate config and credentials
+openclaw gateway start    # start the gateway
+openclaw status           # confirm channels and providers are connected
+```
+
+<Note>
+WhatsApp credentials tied to a phone's linked-device pairing may require re-scanning the QR code on the new host. Run `openclaw channels logout && openclaw channels login` if WhatsApp shows as disconnected after migration.
+</Note>

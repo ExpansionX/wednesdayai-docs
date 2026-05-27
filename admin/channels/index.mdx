@@ -1,9 +1,112 @@
 ---
 title: "Channel setup"
-description: "Install and configure channel integrations."
+description: "Connect WednesdayAI to messaging platforms: WhatsApp, Telegram, iMessage, Signal, Slack, Discord, and more."
 audience: admin
 ---
 
 # Channel setup
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI connects to messaging platforms through channels. Each channel is a plugin that handles incoming messages, outgoing replies, and account pairing.
+
+## Available channels
+
+<CardGroup cols={2}>
+  <Card title="WhatsApp" href="/admin/channels/whatsapp" icon="message-circle">
+    Personal and business WhatsApp via linked-device protocol
+  </Card>
+  <Card title="Telegram" href="/admin/channels/telegram" icon="send">
+    Telegram bot — full Bot API support
+  </Card>
+  <Card title="iMessage" href="/admin/channels/imessage" icon="apple">
+    iMessage via Bluebubbles or native macOS
+  </Card>
+  <Card title="Signal" href="/admin/channels/signal" icon="shield">
+    Signal via signal-cli
+  </Card>
+  <Card title="Slack" href="/admin/channels/slack" icon="hash">
+    Slack bot via Events API
+  </Card>
+  <Card title="Discord" href="/admin/channels/discord" icon="gamepad-2">
+    Discord bot via Gateway API
+  </Card>
+  <Card title="Microsoft Teams" href="/admin/channels/msteams" icon="grid">
+    Teams via Bot Framework
+  </Card>
+  <Card title="Matrix" href="/admin/channels/matrix" icon="grid-2x2">
+    Matrix/Element via matrix-js-sdk
+  </Card>
+</CardGroup>
+
+Also available: LINE, Zalo, Web chat (built-in), Voice call.
+
+## General setup flow
+
+Every channel follows the same pattern:
+
+1. **Install the channel plugin** (if not bundled)
+2. **Run the login wizard** to authenticate
+3. **Configure access policies** (who can talk to the bot)
+4. **Pair the channel** to your agent
+5. **Test with a message**
+
+```bash
+openclaw channels list                        # see installed channels
+openclaw channels login --channel <name>      # authenticate
+openclaw channels status --channel <name>     # check connectivity
+```
+
+## Access policies
+
+After connecting a channel, configure who can interact with the agent:
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "default",
+        dmPolicy: "allowlist",     // allowlist | ask | disabled
+        channels: {
+          whatsapp: {
+            allowFrom: ["+15555550123"],
+          },
+          telegram: {
+            allowFrom: ["@yourusername"],
+          },
+        },
+      },
+    ],
+  },
+}
+```
+
+See [Security hardening](/admin/security) for policy options and their implications.
+
+## Pairing
+
+Most channels require pairing a specific account to the agent. After login, the channel issues a **pairing code** or QR to link the account:
+
+```bash
+openclaw channels login --channel whatsapp    # shows QR in terminal
+```
+
+For subsequent startups, the gateway reconnects automatically using stored credentials.
+
+## Relinking
+
+If a channel disconnects or credentials expire:
+
+```bash
+openclaw channels logout --channel <name>
+openclaw channels login --channel <name>
+```
+
+## Channel logs
+
+```bash
+openclaw channels logs --channel <name> --follow
+```
+
+<Note>
+Channel-specific setup guides (WhatsApp, Telegram, iMessage, etc.) are being written. In the meantime, run `openclaw channels login --channel <name> --verbose` for guided setup, or check the source docs in the [WednesdayAI repository](https://github.com/ExpansionX/WednesdayAI-core/tree/main/docs).
+</Note>

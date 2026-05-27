@@ -1,9 +1,91 @@
 ---
-title: "Contributing to core"
-description: "How to contribute code, docs, and plugins to WednesdayAI."
+title: "Contributing"
+description: "How to contribute to WednesdayAI: PR workflow, review checklist, and maintainer guidelines."
 audience: developer
 ---
 
-# Contributing to core
+# Contributing
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI welcomes contributions — bug fixes, new plugins, channel adapters, hook packs, and documentation.
+
+## Before you start
+
+Read [CONTRIBUTING.md](https://github.com/ExpansionX/WednesdayAI-core/blob/main/CONTRIBUTING.md) for the full contribution guide. Key points:
+
+- **Fork philosophy:** lean core, highly extensible. If it can be a plugin, it should be.
+- **Stability over features:** we prefer a stable, well-tested core over feature parity with upstream openclaw.
+- **Extension scope:** new extensions use `@wednesdayai/*`, not `@openclaw/*`.
+
+## Setup
+
+```bash
+git clone https://github.com/ExpansionX/WednesdayAI-core.git
+cd WednesdayAI-core
+pnpm install
+pnpm build
+pnpm test:fast    # verify baseline passes
+```
+
+## Development workflow
+
+1. **Create a branch** from `main`
+2. **Write tests first** (TDD preferred)
+3. **Implement the change**
+4. **Run checks** before committing:
+
+   ```bash
+   pnpm check         # format + type check + lint
+   pnpm test:fast     # unit tests
+   pnpm build         # full build
+   ```
+
+5. **Commit** using `scripts/committer`:
+
+   ```bash
+   scripts/committer "feat(plugin-sdk): add ToolContext type" src/plugin-sdk/types.ts
+   ```
+
+   Use Conventional Commit format: `type(scope): description`
+
+6. **Open a PR** using the template in `.github/pull_request_template.md`
+
+## PR checklist
+
+Before opening a PR, verify:
+
+- [ ] `pnpm build && pnpm check && pnpm test` pass
+- [ ] Fork philosophy: lean core, stable contracts, correct naming
+- [ ] If new extension: `@wednesdayai/*` scope, plugin-sdk contract, no `workspace:*` in `dependencies`
+- [ ] If touching plugin-sdk exports: no `any`, no breaking changes without migration path
+- [ ] `CHANGELOG.md` updated for user-facing changes
+- [ ] Dev log created for new features at `docs/logs/YYYY-MM-DD-<slug>.md`
+- [ ] AI-assisted PRs marked as such in title or description
+
+## Review criteria
+
+PRs are evaluated against the **fork philosophy**:
+
+1. **Lean core** — does this add to core, or could it be a plugin/hook/SDK extension?
+2. **Stable contracts** — does this change public plugin-sdk, hook, or gateway API surfaces? If yes, is there a migration path?
+3. **Naming** — user-facing text uses `WednesdayAI`; code/config/imports use `openclaw`
+4. **Extension scope** — new WednesdayAI-native extensions use `@wednesdayai/*`
+
+## Cherry-picks from upstream openclaw
+
+We selectively adopt changes from upstream openclaw. The bar is:
+
+1. Does it improve **stability** or **extensibility**?
+2. Does it touch core contracts (plugin-sdk, hooks, gateway, routing)? If yes, a detailed stability rationale is required.
+3. Does it add platform-specific dependencies that belong in a transport integration?
+
+Propose a cherry-pick in an issue before opening a PR. We decline wholesale upstream rewrites.
+
+## Reporting security issues
+
+Report security vulnerabilities via [GitHub Security Advisories](https://github.com/ExpansionX/WednesdayAI-core/security/advisories) or email `security@expansionx.com.au`. Do not post publicly before a fix is ready.
+
+## Getting help
+
+- **Issues:** [github.com/ExpansionX/WednesdayAI-core/issues](https://github.com/ExpansionX/WednesdayAI-core/issues)
+- **Discussions:** GitHub Discussions on the repo
+- **Contact:** hello@expansionx.com.au for maintainer discussions

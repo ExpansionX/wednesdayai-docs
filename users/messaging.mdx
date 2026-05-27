@@ -1,9 +1,99 @@
 ---
-title: "Sending messages and media"
-description: "How to talk to your AI assistant through any paired channel."
+title: "Messaging basics"
+description: "How to have a conversation with WednesdayAI: context, sessions, and tips."
 audience: user
 ---
 
-# Sending messages and media
+# Messaging basics
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+Talk to WednesdayAI the same way you would with any contact — just send a message. There is no special syntax for normal conversation.
+
+## Starting a conversation
+
+Send any message to the bot on your connected channel (WhatsApp, Telegram, etc.). The agent responds to your message, using your conversation history as context.
+
+**First time?** See [Pairing your first channel](/users/pairing/first-channel) if you have not yet been connected to the gateway.
+
+## How context works
+
+WednesdayAI keeps a **session** — a running window of conversation history — that provides context for each response. The agent knows what you said earlier in the session.
+
+Sessions do not persist forever. When a session ends (inactivity timeout, or you start a new one), the agent starts fresh.
+
+**To start a fresh conversation:**
+
+```
+/reset
+```
+
+Or equivalently:
+
+```
+/new
+```
+
+You can also start fresh with a different model:
+
+```
+/new claude-3-5-sonnet
+```
+
+## Getting status
+
+Send `/status` at any time to see:
+
+- Which AI model is active
+- Gateway connectivity
+- Provider usage and quota (if tracking is enabled)
+- Active sessions
+
+## Setting context in your message
+
+You can steer the conversation with natural language — no special commands needed. To be explicit, use directives:
+
+- `/think high` — ask the model to reason carefully before responding
+- `/verbose on` — show detailed tool output and reasoning steps
+- `/model <name>` — switch to a specific model for this session
+
+These can be combined with a message:
+
+```
+/think high
+Explain how database indexes work and when to use them.
+```
+
+## Long conversations
+
+If your conversation is getting long and the agent is losing context or making mistakes, use:
+
+```
+/compact
+```
+
+This summarizes the conversation so far and continues with a fresh context window. You can optionally add instructions:
+
+```
+/compact Focus on the authentication module we discussed.
+```
+
+## Tips
+
+- **Tool use is automatic** — if the agent needs to search the web or run code, it will. Just ask naturally.
+- **Multiple messages** — the agent processes one message at a time. If you send several quickly, they are queued.
+- **Inline shortcuts** — some commands work embedded in a message. `/help Where are the docs?` gives a help reply and then processes your question.
+- **Voice** — if your admin has enabled TTS, use `/tts always` to receive audio responses.
+
+## Quick command reference
+
+| Command | Effect |
+| ------- | ------ |
+| `/reset` or `/new` | Start a fresh conversation |
+| `/status` | Current model, gateway status, quota |
+| `/help` | Show available commands |
+| `/think <off/low/high>` | Adjust model reasoning depth |
+| `/model <name>` | Switch AI model |
+| `/compact` | Summarise context and continue |
+| `/verbose on` | Show tool output and reasoning |
+| `/usage tokens` | Show token count on each reply |
+
+Full command reference: [Slash commands](/users/commands).

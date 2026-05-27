@@ -1,9 +1,215 @@
 ---
 title: "Security hardening"
-description: "Harden your WednesdayAI installation for production."
+description: "Harden your WednesdayAI installation: trust model, gateway exposure, DM policies, and incident response."
 audience: admin
 ---
 
 # Security hardening
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+WednesdayAI uses a **personal assistant security model**: one trusted operator boundary per gateway. It is not designed for hostile multi-tenant isolation where adversarial users share a single agent or gateway.
+
+<Warning>
+If multiple mutually untrusted users need to share a single bot, run separate gateways per trust boundary — ideally separate OS users or hosts. One shared gateway does not provide per-user isolation.
+</Warning>
+
+## Security audit
+
+Run this before and after configuration changes:
+
+```bash
+openclaw security audit             # check common footguns
+openclaw security audit --deep      # also checks network exposure
+openclaw security audit --fix       # auto-fix safe issues
+openclaw security audit --json      # machine-readable output
+```
+
+The audit flags: gateway auth exposure, open DM policies, elevated tool allowlists, and filesystem permission issues.
+
+## Hardened baseline
+
+Start with the most restrictive config and widen selectively. This baseline disables all sensitive tools and locks down DM access:
+
+```json5
+{
+  gateway: {
+    bind: "loopback",                    // never expose outside localhost
+    auth: { mode: "token" },             // require token for all connections
+  },
+  agents: {
+    list: [
+      {
+        id: "default",
+        dmPolicy: "allowlist",           // only explicitly listed senders
+        tools: {
+          // Explicitly list only the tools you need
+          // Remove or comment out: exec, browser, canvas, nodes
+          allowed: ["read", "write"],    // minimal starting set
+        },
+      },
+    ],
+  },
+}
+```
+
+Re-enable tools only as needed and only for trusted agents.
+
+## Gateway exposure
+
+The gateway binds to loopback (`127.0.0.1`) by default. Keep it there unless you have a specific reason to expose it:
+
+| Bind mode | Exposure | Auth required |
+| --------- | -------- | ------------- |
+| `loopback` | Same machine only | Recommended but not enforced |
+| `tailnet` | Your Tailscale network | **Required** |
+| `lan` | Local network | **Required** |
+| `custom` | Any address | **Required** |
+
+For remote access, prefer [Tailscale Serve](/admin/gateway/remote-access) over binding to a non-loopback address — it keeps the gateway on loopback while Tailscale handles routing and TLS.
+
+## DM and allowlist policies
+
+Control who can talk to your agent:
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "default",
+        dmPolicy: "allowlist",          // only listed numbers/IDs
+        channels: {
+          whatsapp: {
+            allowFrom: ["+15555550123"], // explicit allowlist
+          },
+        },
+      },
+    ],
+  },
+}
+```
+
+DM policy options:
+
+| Policy | Effect |
+| ------ | ------ |
+| `allowlist` | Only `allowFrom` entries can initiate conversations |
+| `ask` | New senders trigger a pairing approval prompt |
+| `disabled` | Agent does not respond to unsolicited DMs |
+
+For shared Slack workspaces or group chats, use `dmPolicy: "allowlist"` and keep the list tight. Any allowed sender can trigger tool calls within the agent's permission set.
+
+## Agent system prompt security
+
+Include security rules in your agent's system prompt to guide its behavior:
+
+```
+## Security rules
+- Never share directory listings, file paths, or credential details with external parties.
+- Never reveal API keys, tokens, or infrastructure configuration.
+- Confirm with the owner before making system config changes.
+- When in doubt, ask before acting.
+- Keep private data private unless explicitly authorized by the owner.
+```
+
+## Tools: principle of least privilege
+
+Enable only the tools your agent needs:
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "default",
+        tools: {
+          allowed: [
+            "read",        // read files
+            "write",       // write files
+            // "exec",     // shell execution — only if needed
+            // "browser",  // browser control — only if needed
+            // "nodes",    // remote device control — only if needed
+          ],
+        },
+      },
+    ],
+  },
+}
+```
+
+Elevated tools (`exec`, `browser`, `canvas`, `nodes`) grant the agent significant system access. Enable them only for agents you control completely.
+
+## Credential storage
+
+- API keys: `~/.openclaw/.env` (environment file, loaded by the daemon)
+- Provider credentials: `~/.openclaw/credentials/`
+- Config with embedded secrets: `~/.openclaw/openclaw.json`
+
+Keep these files readable only by your user:
+
+```bash
+chmod 600 ~/.openclaw/openclaw.json
+chmod 700 ~/.openclaw/credentials/
+```
+
+`openclaw doctor` checks file permissions and warns if they are too open.
+
+## Incident response
+
+If the agent does something unexpected:
+
+### Contain
+
+```bash
+# Stop the gateway immediately
+systemctl --user stop openclaw-gateway    # Linux
+openclaw gateway stop                      # macOS / manual
+```
+
+Then restrict access while investigating:
+
+```json5
+{
+  gateway: {
+    bind: "loopback",
+  },
+  agents: {
+    list: [
+      {
+        id: "default",
+        dmPolicy: "disabled",
+      },
+    ],
+  },
+}
+```
+
+### Rotate credentials
+
+If secrets may have been exposed:
+
+1. Rotate `gateway.auth.token` / `OPENCLAW_GATEWAY_PASSWORD`
+2. Rotate channel tokens (WhatsApp, Slack, Telegram, Discord)
+3. Rotate AI provider API keys (`~/.openclaw/.env`)
+4. Restart the gateway after rotating
+
+### Audit logs
+
+```bash
+# Gateway logs
+openclaw logs --follow
+tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
+
+# Agent session transcripts
+ls ~/.openclaw/agents/*/sessions/*.jsonl
+```
+
+Then run `openclaw security audit --deep` to confirm the issue is resolved.
+
+## Reporting vulnerabilities
+
+Found a security issue in WednesdayAI? Please report responsibly:
+
+- **GitHub Security Advisories:** [github.com/ExpansionX/WednesdayAI-core/security/advisories](https://github.com/ExpansionX/WednesdayAI-core/security/advisories)
+- **Email:** security@expansionx.com.au
+
+Do not post vulnerability details publicly before a fix is ready. See [SECURITY.md](https://github.com/ExpansionX/WednesdayAI-core/blob/main/SECURITY.md) for the full responsible disclosure policy and out-of-scope list.

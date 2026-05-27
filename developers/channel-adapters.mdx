@@ -1,9 +1,147 @@
 ---
-title: "Writing a channel adapter"
-description: "Connect a new communication platform to WednesdayAI."
+title: "Channel adapters"
+description: "Build a new channel adapter to connect WednesdayAI to a messaging platform."
 audience: developer
 ---
 
-# Writing a channel adapter
+# Channel adapters
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+A channel adapter connects WednesdayAI to a messaging platform. Each channel is a plugin that implements the `ChannelPlugin<TAccount>` contract from the plugin SDK.
+
+## Overview
+
+Channel plugins live under `extensions/` in the repo. Each is a pnpm workspace package:
+
+```
+extensions/my-channel/
+├── package.json
+├── src/
+│   ├── index.ts       # plugin export
+│   ├── adapter.ts     # ChannelPlugin implementation
+│   └── types.ts
+└── vitest.config.ts
+```
+
+## Plugin contract
+
+A channel plugin is a plain object implementing `ChannelPlugin<TAccount>`:
+
+```typescript
+import type { ChannelPlugin } from "openclaw/plugin-sdk";
+
+interface MyAccount {
+  id: string;
+  token: string;
+}
+
+const myChannel: ChannelPlugin<MyAccount> = {
+  id: "my-channel",           // must match package name and directory
+  name: "My Channel",         // display name
+  displayName: "My Channel",
+
+  // Account operations
+  async login(ctx) { /* authenticate and return account */ },
+  async logout(ctx) { /* revoke credentials */ },
+  async status(ctx) { /* check connectivity */ },
+
+  // Message handling
+  async send(ctx, message) { /* send a message */ },
+
+  // Webhook/event handler
+  async handleEvent(ctx, event) { /* process incoming event */ },
+};
+
+export default myChannel;
+```
+
+## package.json requirements
+
+```json
+{
+  "name": "@wednesdayai/my-channel",
+  "version": "1.0.0",
+  "openclaw": {
+    "id": "my-channel",
+    "displayName": "My Channel",
+    "type": "channel"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.2"
+  },
+  "devDependencies": {
+    "openclaw": "2026.3.2"
+  }
+}
+```
+
+Rules:
+- Plugin id, directory name, and npm package name must match exactly
+- `openclaw` goes in `devDependencies` or `peerDependencies`, never `dependencies`
+- No `workspace:*` in `dependencies`
+
+## Account model
+
+The `TAccount` type parameter represents a linked account for the channel. It is stored per-account in the gateway state.
+
+For channels with credential storage:
+- Credentials go in `~/.openclaw/credentials/<channel>/<accountId>/`
+- Use the credential store helpers from the plugin SDK rather than writing files directly
+
+## Incoming messages
+
+Incoming events (webhooks, polling) are handled by `handleEvent`. Parse the raw event into a `ChannelMessage` and return it:
+
+```typescript
+async handleEvent(ctx, rawEvent) {
+  const message: ChannelMessage = {
+    id: rawEvent.message_id,
+    chatId: rawEvent.chat_id,
+    senderId: rawEvent.from,
+    text: rawEvent.text,
+    timestamp: new Date(rawEvent.timestamp),
+  };
+  return { messages: [message] };
+},
+```
+
+## Outgoing messages
+
+The `send` method receives a structured `OutgoingMessage` and delivers it to the platform:
+
+```typescript
+async send(ctx, message) {
+  await myPlatformClient.sendMessage({
+    chatId: message.chatId,
+    text: message.text,
+    // attachments, formatting, etc.
+  });
+},
+```
+
+## Testing a channel adapter
+
+Write integration tests in `extensions/my-channel/src/*.test.ts`. Mock the platform client; do not make live API calls in unit tests.
+
+```bash
+pnpm --filter @wednesdayai/my-channel test
+```
+
+Live integration tests (requires credentials):
+
+```bash
+MY_CHANNEL_TOKEN=... pnpm --filter @wednesdayai/my-channel test:live
+```
+
+## Adding docs
+
+Create `docs/channels/my-channel.md` in the main repo with setup instructions for the new channel. Update `docs/channels/` index to include the new channel.
+
+## PR checklist for new channels
+
+- [ ] Adapter implements the full `ChannelPlugin<TAccount>` contract
+- [ ] Package name is `@wednesdayai/<channel>`, id matches directory name
+- [ ] No `workspace:*` in `dependencies`
+- [ ] Unit tests pass: `pnpm test:fast`
+- [ ] Docs: `docs/channels/<name>.md` created
+- [ ] `CHANGELOG.md` updated
+- [ ] Dev log at `docs/logs/YYYY-MM-DD-<name>-channel.md`

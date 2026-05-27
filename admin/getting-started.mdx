@@ -1,9 +1,226 @@
 ---
 title: "Getting started"
-description: "Get WednesdayAI installed, configured, and running."
+description: "Install WednesdayAI, run the gateway, and reach the control panel in under ten minutes."
 audience: admin
 ---
 
 # Getting started
 
-<Note>This page is being written. Check back soon, or [contribute on GitHub](https://github.com/ExpansionX/WednesdayAI-core).</Note>
+This page takes you from zero to a running WednesdayAI gateway with the control panel accessible. Channel setup — connecting WhatsApp, Telegram, iMessage, and others — comes after the gateway is stable.
+
+<Info>
+**Fastest path to a first chat:** once the gateway is running, open `http://127.0.0.1:18789/` in a browser on the same machine. The built-in control panel lets you chat with your AI without connecting any external channel first.
+</Info>
+
+## Requirements
+
+- **Node.js 22 or newer** — the installer script installs it automatically if missing
+- **macOS, Linux, or Windows (via WSL2)** — native Windows is supported but WSL2 is recommended
+- About 500 MB free disk space (including node modules)
+
+Check your Node version:
+
+```bash
+node --version
+```
+
+If it prints `v22.x.x` or higher you are ready. Otherwise, let the installer handle it or install via [nvm](https://github.com/nvm-sh/nvm) / [fnm](https://github.com/Schniz/fnm) first.
+
+## Step 1 — Install
+
+The installer script is the recommended path. It detects your Node version, installs or upgrades it if needed, installs the `openclaw` CLI globally via npm, and then launches the onboarding wizard.
+
+<Tabs>
+  <Tab title="macOS / Linux / WSL2">
+    ```bash
+    curl -fsSL https://wednesdayai.dev/install.sh | bash
+    ```
+  </Tab>
+  <Tab title="Windows (PowerShell)">
+    ```powershell
+    iwr -useb https://wednesdayai.dev/install.ps1 | iex
+    ```
+  </Tab>
+  <Tab title="npm (manual)">
+    If you already have Node 22+ and prefer to manage the install yourself:
+
+    ```bash
+    npm install -g openclaw@latest
+    ```
+
+    Then run the onboarding wizard manually in Step 2.
+  </Tab>
+</Tabs>
+
+<Accordion title="pnpm global install">
+  pnpm requires an extra step to approve packages with native build scripts:
+
+  ```bash
+  pnpm add -g openclaw@latest
+  pnpm approve-builds -g    # select openclaw, sharp, node-llama-cpp when prompted
+  ```
+</Accordion>
+
+<Accordion title="sharp build errors on macOS">
+  If `sharp` fails during install because you have libvips installed via Homebrew:
+
+  ```bash
+  SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g openclaw@latest
+  ```
+</Accordion>
+
+## Step 2 — Run the onboarding wizard
+
+If the installer script completed successfully it already ran the wizard. If you used the manual npm install, run:
+
+```bash
+openclaw onboard --install-daemon
+```
+
+The wizard walks you through:
+
+1. **Auth provider** — choose which AI provider (Claude, GPT-4, Gemini, local) to connect first. You can add more later via `openclaw login`.
+2. **Gateway port** — defaults to `18789`. Change it here if that port is already in use.
+3. **System service** — `--install-daemon` installs the gateway as a background service so it starts at login. Recommended for persistent deployments.
+
+<Note>
+You can rerun the wizard at any time with `openclaw onboard`. Individual steps are also available as subcommands — for example `openclaw login` to re-authenticate with a provider.
+</Note>
+
+## Step 3 — Verify the gateway
+
+After onboarding, the gateway should be running as a service. Confirm:
+
+```bash
+openclaw gateway status
+```
+
+Expected output:
+
+```
+✔ Gateway running  pid=12345  port=18789  uptime=0m 12s
+```
+
+If the gateway is not running, start it:
+
+<Tabs>
+  <Tab title="Linux (systemd)">
+    ```bash
+    systemctl --user start openclaw-gateway
+    systemctl --user status openclaw-gateway
+    ```
+  </Tab>
+  <Tab title="macOS (menubar app)">
+    Open the **WednesdayAI** menubar app and click **Start gateway**. Or from the terminal:
+
+    ```bash
+    openclaw gateway start
+    ```
+  </Tab>
+  <Tab title="Foreground (any platform)">
+    Useful for quick tests or troubleshooting — press Ctrl-C to stop:
+
+    ```bash
+    openclaw gateway --port 18789
+    ```
+  </Tab>
+</Tabs>
+
+## Step 4 — Open the control panel
+
+```bash
+openclaw dashboard
+```
+
+This opens `http://127.0.0.1:18789/` in your default browser. If you are running the gateway on a remote server, see [Remote access](/admin/gateway/remote-access) to reach it securely.
+
+<Check>
+If the control panel loads and you can send a test message, your gateway is ready.
+</Check>
+
+## Step 5 — Run a health check
+
+```bash
+openclaw doctor
+```
+
+`openclaw doctor` validates your config file, checks that all configured channels and providers are reachable, and reports any missing credentials or unknown config keys. Fix any warnings before moving on.
+
+```bash
+openclaw doctor --fix    # auto-repair common issues
+```
+
+## What you have now
+
+| Component | Status |
+| --------- | ------ |
+| `openclaw` CLI | Installed globally |
+| Gateway | Running as a background service |
+| Auth | At least one AI provider connected |
+| Control panel | Accessible at `http://localhost:18789/` |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Gateway configuration" href="/admin/gateway/configuration" icon="settings">
+    Tune port, TLS, rate limits, model routing, and all other gateway settings.
+  </Card>
+  <Card title="Connect channels" href="/admin/channels" icon="plug">
+    Add WhatsApp, Telegram, iMessage, Signal, Slack, Discord, and more.
+  </Card>
+  <Card title="Authentication" href="/admin/gateway/authentication" icon="lock">
+    API keys, provider credentials, and OAuth tokens.
+  </Card>
+  <Card title="Remote access" href="/admin/gateway/remote-access" icon="globe">
+    Reach the gateway securely from outside localhost.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="`openclaw` command not found after install">
+    The npm global bin directory is not in your PATH. Quick fix:
+
+    ```bash
+    echo 'export PATH="$(npm prefix -g)/bin:$PATH"' >> ~/.zshrc
+    source ~/.zshrc
+    ```
+
+    Then verify: `openclaw --version`
+  </Accordion>
+
+  <Accordion title="Gateway fails to start — port already in use">
+    Change the port in your config file (`~/.openclaw/openclaw.json`):
+
+    ```json
+    {
+      "gateway": {
+        "port": 18790
+      }
+    }
+    ```
+
+    Then restart: `systemctl --user restart openclaw-gateway` (Linux) or `openclaw gateway start` (macOS/manual).
+  </Accordion>
+
+  <Accordion title="Onboarding wizard exits without completing">
+    The wizard requires an active TTY. If you are running over SSH without a PTY, add `-t`:
+
+    ```bash
+    ssh -t user@host openclaw onboard
+    ```
+
+    Or complete the wizard locally and then copy `~/.openclaw/openclaw.json` to the server.
+  </Accordion>
+
+  <Accordion title="`openclaw doctor` reports unknown config keys">
+    Unknown keys at the top level cause the gateway to refuse to start. Remove them, or run:
+
+    ```bash
+    openclaw doctor --fix
+    ```
+
+    This strips unknown keys and fills missing required defaults. Always check the diff before restarting the gateway.
+  </Accordion>
+</AccordionGroup>
