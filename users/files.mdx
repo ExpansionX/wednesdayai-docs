@@ -1,0 +1,86 @@
+---
+title: "Sharing files, images, and voice"
+description: "Send documents, photos, screenshots, PDFs, and voice notes to WednesdayAI and ask questions about them."
+audience: user
+---
+
+# Sharing files, images, and voice
+
+You can send WednesdayAI more than text. Attach a photo, a screenshot, a PDF, or a document and ask questions about it - the AI works with the attachment directly.
+
+## How to share something
+
+Attach the file in your chat app the way you normally would, and add a message saying what you want:
+
+> (attach a photo) "What's in this picture?"
+>
+> (attach a screenshot) "Why is this error happening?"
+>
+> (attach a PDF) "Summarise this report in five bullet points."
+
+You can send the attachment and your question together, or send the attachment first and then ask.
+
+## Images and photos
+
+The AI can look at photos and screenshots and describe, interpret, or answer questions about them.
+
+> "Is this plant healthy?"
+>
+> "Read the text in this screenshot and explain the warning."
+>
+> "What's the total on this receipt?"
+
+<Note>
+Image analysis is available when your administrator has set up an image-capable model. If the AI says it cannot see images, ask your admin.
+</Note>
+
+## PDFs and documents
+
+The AI can read PDFs and answer questions, summarise them, or compare several at once (up to about ten in one go).
+
+> "Summarise the key risks in this contract."
+>
+> "Compare these two quotes and tell me which is cheaper overall." (attach both)
+>
+> "Pull out just the customer-impacting items from pages 1 to 3."
+
+For long PDFs you can point it at a specific page range, like "look only at pages 1-3 and 7".
+
+## Voice notes
+
+On channels that support it, you can send a **voice note** and the AI will transcribe and respond to it - handy when typing is awkward. Just record and send as you normally would.
+
+The AI can also reply with voice if your administrator has enabled it. Turn spoken replies on with:
+
+```
+/tts always
+```
+
+(On Discord, use `/voice` instead.)
+
+## What each channel supports
+
+Support depends on the channel and how your admin set it up:
+
+- **Images and screenshots** work on most channels.
+- **PDFs and documents** work where the channel allows file attachments (WhatsApp, Telegram, Discord, Slack, and others).
+- **Voice notes** depend on the channel and on voice being enabled.
+
+If an attachment does not seem to reach the AI, your administrator may need to enable inbound attachments for that channel.
+
+## Tips
+
+- **Be specific.** "Summarise this in five bullets" gets a better answer than "what's this".
+- **Big files may be limited.** Channels and the gateway cap attachment size; very large files may be rejected. Ask your admin if a file will not go through.
+- **Keep sensitive documents in mind.** Anything you send is processed by the gateway and the AI model - share accordingly.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Available tools" href="/users/tools/index" icon="wrench">
+    The image and PDF tools the AI uses behind the scenes.
+  </Card>
+  <Card title="Messaging basics" href="/users/messaging" icon="message-circle">
+    How conversations, context, and memory fit together.
+  </Card>
+</CardGroup>

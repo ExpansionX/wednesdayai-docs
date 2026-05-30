@@ -1,0 +1,189 @@
+---
+title: "Matrix"
+description: "Connect WednesdayAI to Matrix — access tokens, rooms, threads, end-to-end encryption, and multi-account setups."
+audience: admin
+---
+
+# Matrix
+
+Matrix is an open, decentralised messaging protocol. WednesdayAI connects as a Matrix **user** on any homeserver, so the bot needs its own Matrix account. Once logged in, you can DM the bot or invite it to rooms (Matrix "groups").
+
+Matrix ships as a **plugin** — it is not bundled with the core install.
+
+## Install the plugin
+
+```bash
+openclaw plugins install @openclaw/matrix
+```
+
+From a local git checkout:
+
+```bash
+openclaw plugins install ./extensions/matrix
+```
+
+If you choose Matrix during onboarding and a git checkout is detected, WednesdayAI offers the local install path automatically.
+
+## Setup
+
+<Steps>
+  <Step title="Create a Matrix account for the bot">
+    Use any homeserver (browse hosts at [matrix.org/ecosystem/hosting](https://matrix.org/ecosystem/hosting/)) or self-host.
+  </Step>
+  <Step title="Get an access token">
+    Either let WednesdayAI log in from `userId` + `password` (it stores the token in `~/.openclaw/credentials/matrix/credentials.json` and reuses it), or fetch a token yourself:
+
+    ```bash
+    curl --request POST \
+      --url https://matrix.example.org/_matrix/client/v3/login \
+      --header 'Content-Type: application/json' \
+      --data '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"your-user-name"},"password":"your-password"}'
+    ```
+  </Step>
+  <Step title="Configure credentials">
+    ```json5
+    {
+      channels: {
+        matrix: {
+          enabled: true,
+          homeserver: "https://matrix.example.org",
+          accessToken: "syt_***",
+          dm: { policy: "pairing" },
+        },
+      },
+    }
+    ```
+
+    Or via env (default account only): `MATRIX_HOMESERVER`, `MATRIX_ACCESS_TOKEN` (or `MATRIX_USER_ID` + `MATRIX_PASSWORD`). With an access token, the user ID is fetched automatically via `/whoami`. If both config and env are set, config wins.
+  </Step>
+  <Step title="Restart and connect">
+    Restart the gateway, then DM the bot or invite it to a room from any Matrix client (Element, Beeper, and so on).
+  </Step>
+</Steps>
+
+## Access control
+
+Matrix uses a nested `dm` object rather than a flat `dmPolicy` key:
+
+```json5
+{
+  channels: {
+    matrix: {
+      dm: {
+        policy: "pairing",          // pairing | allowlist | open | disabled
+        allowFrom: ["@user:example.org"],
+      },
+      groupPolicy: "allowlist",     // allowlist | open | disabled
+      groupAllowFrom: ["@owner:example.org"],
+      groups: {
+        "!roomId:example.org": { allow: true },
+        "#alias:example.org": { allow: true },
+        "*": { requireMention: true },
+      },
+    },
+  },
+}
+```
+
+<Note>
+DM and room allowlists require **full Matrix user IDs** (`@user:server`) and room IDs or aliases. Display names and bare localparts (`"alice"`) are ambiguous and ignored. `open` DM policy requires `allowFrom: ["*"]`.
+</Note>
+
+Approve DM pairings:
+
+```bash
+openclaw pairing list matrix
+openclaw pairing approve matrix <CODE>
+```
+
+Room invites are auto-joined by default; control with `channels.matrix.autoJoin` (`always | allowlist | off`) and `channels.matrix.autoJoinAllowlist`. Set `requireMention: false` on a room to enable auto-reply there.
+
+## End-to-end encryption
+
+E2EE is supported via the Rust crypto SDK. Enable it with `channels.matrix.encryption: true`:
+
+```json5
+{
+  channels: {
+    matrix: {
+      enabled: true,
+      homeserver: "https://matrix.example.org",
+      accessToken: "syt_***",
+      encryption: true,
+      dm: { policy: "pairing" },
+    },
+  },
+}
+```
+
+On first connection the bot requests device verification from your other sessions — approve it in Element (or another client) to enable key sharing. Crypto state is stored per account and access token under `~/.openclaw/matrix/accounts/...`; if the access token (device) changes, a new store is created and the bot must be re-verified.
+
+<Warning>
+If the crypto module cannot load, E2EE is disabled and encrypted rooms will not decrypt (the gateway logs a warning). If you see missing-module errors, allow build scripts for `@matrix-org/matrix-sdk-crypto-nodejs` and run `pnpm rebuild @matrix-org/matrix-sdk-crypto-nodejs`. Beeper requires E2EE enabled.
+</Warning>
+
+## Threads
+
+- `channels.matrix.threadReplies`: `off | inbound | always` (default `inbound`) — whether replies stay in threads.
+- `channels.matrix.replyToMode`: `off | first | all` (default `off`) — reply-to metadata when not replying in a thread.
+
+## Multi-account
+
+Run several Matrix users from one gateway via `channels.matrix.accounts`. Each account inherits the top-level settings and can override any of them. Env variables apply only to the default account; account startup is serialised. Route accounts to different agents with `bindings[].match.accountId`.
+
+```json5
+{
+  channels: {
+    matrix: {
+      enabled: true,
+      dm: { policy: "pairing" },
+      accounts: {
+        assistant: {
+          name: "Main assistant",
+          homeserver: "https://matrix.example.org",
+          accessToken: "syt_assistant_***",
+          encryption: true,
+        },
+        alerts: {
+          name: "Alerts bot",
+          homeserver: "https://matrix.example.org",
+          accessToken: "syt_alerts_***",
+          dm: { policy: "allowlist", allowFrom: ["@admin:example.org"] },
+        },
+      },
+    },
+  },
+}
+```
+
+## Capabilities
+
+DMs, rooms, threads, media, reactions, location, and native commands are all supported. Polls send and inbound poll starts convert to text (responses and ends are ignored).
+
+## Troubleshooting
+
+```bash
+openclaw status
+openclaw gateway status
+openclaw logs --follow
+openclaw doctor
+openclaw channels status --probe
+openclaw pairing list matrix
+```
+
+<AccordionGroup>
+  <Accordion title="Logged in but room messages ignored">
+    The room is blocked by `groupPolicy` or is not in the room allowlist.
+  </Accordion>
+  <Accordion title="DMs ignored">
+    The sender is pending approval under `dm.policy: "pairing"` — approve with `openclaw pairing approve matrix <CODE>`.
+  </Accordion>
+  <Accordion title="Encrypted rooms fail to decrypt">
+    Crypto support failed to load or `encryption` is not enabled. Rebuild the crypto module and re-verify the device.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Channel setup](/admin/channels)
+- [Channel troubleshooting](/admin/troubleshooting)

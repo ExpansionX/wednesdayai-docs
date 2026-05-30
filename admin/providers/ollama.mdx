@@ -1,0 +1,79 @@
+---
+title: "Ollama"
+description: "Run AI models locally with Ollama — no API key, full privacy, auto-discovered by WednesdayAI."
+audience: admin
+---
+
+# Ollama
+
+Ollama runs AI models locally — no API key, no cloud, no data leaving your network. WednesdayAI auto-discovers a running Ollama instance.
+
+## Prerequisites
+
+Install Ollama from [ollama.com](https://ollama.com), then pull a model:
+
+```bash
+ollama pull llama3.3
+ollama list
+```
+
+## Connecting
+
+WednesdayAI detects Ollama automatically when it runs locally at `http://127.0.0.1:11434`. No login step is needed. To point at a non-default host, set the base URL:
+
+```bash
+export OLLAMA_HOST=http://localhost:11434
+```
+
+## Selecting a model
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "ollama/llama3.3" },
+    },
+  },
+}
+```
+
+The `ollama/` prefix routes the request to the Ollama provider:
+
+| Ollama model | Reference |
+| ------------ | --------- |
+| `llama3.3` | `ollama/llama3.3` |
+| `mistral` | `ollama/mistral` |
+| `qwen2.5-coder` | `ollama/qwen2.5-coder` |
+| `deepseek-r1` | `ollama/deepseek-r1` |
+
+Run `openclaw models status` to see which Ollama models WednesdayAI can reach.
+
+## Remote Ollama
+
+If Ollama runs on another machine (a GPU box, a home server), set the base URL via `models.providers`:
+
+```json5
+{
+  models: {
+    providers: {
+      ollama: { baseUrl: "http://192.168.1.50:11434" },
+    },
+  },
+}
+```
+
+By default Ollama only listens on `127.0.0.1`. To accept remote connections, set `OLLAMA_HOST=0.0.0.0` on the Ollama machine. For secure remote access, put Ollama behind Tailscale and use its MagicDNS name rather than exposing port 11434.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No models found">
+    Ollama is running but has no models pulled. Run `ollama pull <model>` and re-probe with `openclaw doctor`.
+  </Accordion>
+  <Accordion title="Connection refused">
+    Ollama is not running. Start it with `ollama serve` (or the system service) and verify with `ollama list`.
+  </Accordion>
+  <Accordion title="Remote Ollama not reachable">
+    By default Ollama listens only on loopback. Set `OLLAMA_HOST=0.0.0.0` on the Ollama machine and restart it. Use Tailscale rather than exposing the port publicly.
+  </Accordion>
+</AccordionGroup>

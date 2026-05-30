@@ -1,90 +1,216 @@
 ---
 title: "Agent tools"
-description: "Define custom tools for the WednesdayAI agent to call: TypeBox schemas, handlers, and best practices."
+description: "Register custom agent tools from a plugin: TypeBox parameters, the execute() handler, optional tools, and allowlists."
 audience: developer
 ---
 
 # Agent tools
 
-Agent tools are functions the AI can call during a run. You define the schema, the gateway handles routing them to the model and invoking the handler.
+Agent tools are actions the AI can invoke during a run. A plugin registers a tool through `api.registerTool(...)`; the runtime exposes it to the model, validates input against your schema, calls your `execute()` handler, and returns the result to the model.
+
+<Note>
+  Tools are registered from a plugin's `register` function. If you have not built a plugin
+  yet, start with [Write your first plugin](/developers/plugins/your-first-plugin) — this page
+  goes deeper on the tool surface itself.
+</Note>
+
+## The tool shape
+
+The object you pass to `api.registerTool(...)` is an `AnyAgentTool`. The fields that matter for a typical tool are:
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `name` | `string` | The tool name the model sees. Use a namespaced, unique name. |
+| `description` | `string` | The model reads this to decide when to call the tool. Be specific. |
+| `parameters` | TypeBox schema | Input schema (`Type.Object({ ... })`). |
+| `execute` | `(id, params) => Promise<result>` | Your handler. Returns a content result. |
+
+There is no `ToolDefinition`, no `inputSchema`, and no `run()` — those are not part of the WednesdayAI surface. The real type is `AnyAgentTool`, re-exported from `openclaw/plugin-sdk`.
 
 ## Defining a tool
 
-Tools use `@sinclair/typebox` schemas for input validation. Pin to exact version `0.34.48`.
-
-```typescript
+```ts
 import { Type } from "@sinclair/typebox";
-import type { ToolDefinition } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
-export const fetchUrlTool: ToolDefinition = {
-  name: "fetch_url",
-  description: "Fetch the contents of a URL and return the text.",
-  inputSchema: Type.Object({
-    url: Type.String({ description: "The URL to fetch." }),
-    timeout: Type.Optional(
-      Type.Number({ description: "Timeout in milliseconds. Default: 5000." })
-    ),
-  }),
-  async run({ url, timeout = 5000 }) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeout) });
-    if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
-    return { text: await res.text() };
-  },
-};
+export default function register(api: OpenClawPluginApi): void {
+  api.registerTool({
+    name: "fetch_url",
+    description: "Fetch the contents of a URL and return the text.",
+    parameters: Type.Object({
+      url: Type.String({ description: "The URL to fetch." }),
+      timeoutMs: Type.Optional(
+        Type.Number({ description: "Timeout in milliseconds. Default: 5000." }),
+      ),
+    }),
+    async execute(_id, params) {
+      const url = params.url as string;
+      const timeoutMs = (params.timeoutMs as number | undefined) ?? 5000;
+      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text", text: `HTTP ${res.status} from ${url}` }],
+        };
+      }
+      const text = await res.text();
+      return { content: [{ type: "text", text }] };
+    },
+  });
+}
 ```
+
+### The `execute` signature
+
+`execute(id, params)` receives:
+
+- `id` — the tool-call id assigned by the runtime. Most tools ignore it (`_id`).
+- `params` — the validated input object matching your `parameters` schema.
+
+### The return value
+
+`execute` returns a content result. The common shape is a single text block:
+
+```ts
+return { content: [{ type: "text", text: "result here" }] };
+```
+
+The `content` array may include `text` and `image` blocks. For JSON payloads, use the `jsonResult(...)` helper from the SDK, which stringifies the payload into a text block and attaches structured `details`:
+
+```ts
+import { jsonResult } from "openclaw/plugin-sdk";
+
+async execute(_id, params) {
+  return jsonResult({ ok: true, query: params.query });
+}
+```
+
+## Reading parameters safely
+
+Model-supplied params are untrusted. The SDK exposes typed readers that coerce and validate input and throw a clear error on bad values:
+
+```ts
+import { readStringParam, readNumberParam } from "openclaw/plugin-sdk";
+
+async execute(_id, params) {
+  const query = readStringParam(params, "query", { required: true });
+  const limit = readNumberParam(params, "limit", { integer: true }) ?? 5;
+  // ...
+}
+```
+
+These readers also accept `snake_case` variants of camelCase keys, so `timeoutMs` resolves from either `timeoutMs` or `timeout_ms`.
 
 ## Schema rules
 
-These constraints apply to all tool input schemas:
+These constraints apply to every tool `parameters` schema:
 
-| Rule | Example |
-| ---- | ------- |
-| No `Type.Union` | Use separate tools or optional fields instead |
-| No `anyOf` / `oneOf` / `allOf` | Same — structural unions confuse model tool use |
-| Use `Type.Optional(...)` | Not `T \| null` |
-| Use `stringEnum` for enumerations | `Type.Unsafe<"a" | "b">({ enum: ["a", "b"] })` |
-| No `format` as a raw property name | Some validators reject it |
+| Rule | Why |
+| ---- | --- |
+| No `Type.Union` | Structural unions confuse model tool use. Use separate fields or tools. |
+| No `anyOf` / `oneOf` / `allOf` | Same reason. |
+| Use `Type.Optional(...)` not `T \| null` | `null` is not the WednesdayAI convention. |
+| Use `stringEnum` / `optionalStringEnum` for enums | These produce a `Type.Unsafe` enum the validators accept. |
+| Never use `format` as a raw property name | Some validators reject it. |
 
-## Registering tools in a plugin
+`stringEnum` and `optionalStringEnum` are exported from `openclaw/plugin-sdk`:
 
-Export your tools from the plugin's `index.ts` via the plugin manifest:
+```ts
+import { Type } from "@sinclair/typebox";
+import { stringEnum } from "openclaw/plugin-sdk";
 
-```typescript
-import type { PluginDefinition } from "openclaw/plugin-sdk";
-import { fetchUrlTool } from "./tools/fetch-url.js";
-import { searchTool } from "./tools/search.js";
-
-const plugin: PluginDefinition = {
-  id: "my-plugin",
-  tools: [fetchUrlTool, searchTool],
-};
-
-export default plugin;
+const parameters = Type.Object({
+  mode: stringEnum(["fast", "thorough"], { description: "Search mode." }),
+});
 ```
 
-## Tool permissions
+## Optional tools (opt-in)
 
-Tools are gated by the agent's tool policy. Sensitive tools (file write, shell exec, browser) require explicit administrator opt-in. Design tool names and descriptions to be self-explanatory — they appear in the model's tool list and in the control panel.
+By default, a registered tool is available to all agents. If your tool makes outbound requests, uses a paid API, or has side effects, register it as optional so operators opt in explicitly:
 
-Tools that touch the filesystem or network should:
-- Accept explicit paths/URLs (not infer them from context)
-- Return structured data, not raw content when possible
-- Fail with a clear error message on bad input
+```ts
+api.registerTool(
+  {
+    name: "workflow_tool",
+    description: "Run a local workflow.",
+    parameters: Type.Object({ pipeline: Type.String() }),
+    async execute(_id, params) {
+      return { content: [{ type: "text", text: params.pipeline as string }] };
+    },
+  },
+  { optional: true },
+);
+```
+
+Optional tools are never auto-enabled. Users enable them in their config under `tools.allow` (global) or `agents.list[].tools.allow` (per-agent):
+
+```json5
+{
+  tools: {
+    allow: [
+      "workflow_tool", // a specific tool name
+      "my-plugin", // a plugin id — enables all tools from that plugin
+      "group:plugins", // all plugin tools
+    ],
+  },
+}
+```
+
+An allowlist that names only plugin tools is treated as plugin opt-in: core tools stay enabled unless you also list core tools or groups.
+
+## Owner-only tools
+
+Set `ownerOnly: true` on the tool object to restrict execution to owner senders. The runtime wraps non-owner calls so they fail with a restriction error before `execute` runs.
+
+```ts
+api.registerTool({
+  name: "danger_action",
+  description: "Owner-only privileged action.",
+  parameters: Type.Object({}),
+  ownerOnly: true,
+  async execute() {
+    return { content: [{ type: "text", text: "done" }] };
+  },
+});
+```
+
+## Tool factories
+
+Instead of a static tool, you can pass a factory that receives per-invocation context (agent id, session key, workspace dir, sender identity) and returns a tool, an array of tools, or nothing:
+
+```ts
+api.registerTool((ctx) => {
+  if (!ctx.agentId) return undefined;
+  return {
+    name: "scoped_tool",
+    description: "A tool scoped to the current agent.",
+    parameters: Type.Object({}),
+    async execute() {
+      return { content: [{ type: "text", text: `agent ${ctx.agentId}` }] };
+    },
+  };
+});
+```
+
+## Naming and conflicts
+
+- Tool names are **not** deduplicated at registration time. Two tools sharing a name will both register; runtime resolution order decides which is called. Use a unique, namespaced name (for example `my-plugin_fetch_url`).
+- A plugin tool name must not clash with a core tool name — conflicting tools are skipped.
 
 ## Testing tools
 
-Test the handler directly — no need for a full gateway in unit tests:
+Register the tool against a minimal fake `api` and call `execute` directly — no full gateway needed:
 
-```typescript
+```ts
 import { describe, expect, it } from "vitest";
-import { fetchUrlTool } from "./fetch-url.js";
+import { Type } from "@sinclair/typebox";
 
-describe("fetchUrlTool", () => {
-  it("fetches a URL and returns text", async () => {
-    const result = await fetchUrlTool.run({ url: "https://example.com" });
-    expect(typeof result.text).toBe("string");
-    expect(result.text.length).toBeGreaterThan(0);
-  });
+it("returns text content", async () => {
+  let captured: any;
+  const api: any = { registerTool: (tool: any) => (captured = tool) };
+  register(api);
+
+  const result = await captured.execute("call-1", { url: "https://example.com" });
+  expect(result.content[0].type).toBe("text");
 });
 ```
 
@@ -94,8 +220,14 @@ pnpm --filter @wednesdayai/my-plugin test:fast
 
 ## Best practices
 
-- **Single responsibility** — one tool per well-defined action. Avoid tools that do "everything".
-- **Clear descriptions** — the model sees your description when choosing tools. Be specific about what the tool does and when to use it.
-- **Idempotent where possible** — if the tool can be safely retried, make it idempotent.
-- **Structured return values** — return typed objects, not unstructured strings.
-- **Fail loudly** — throw with a clear message rather than returning empty/null on errors.
+- **Single responsibility** — one tool per well-defined action.
+- **Clear descriptions** — the model chooses tools from the description; be specific about what and when.
+- **Validate input** — use the SDK param readers; never trust raw model output.
+- **Return helpful errors** — return a text result describing the problem rather than throwing for expected failures.
+- **Mark side-effecting tools optional** — give operators explicit control.
+
+## What's next
+
+- [Write your first plugin](/developers/plugins/your-first-plugin) — end-to-end worked example
+- [Plugin SDK reference](/developers/sdk) — the full exported surface
+- [Hooks](/developers/hooks) — lifecycle callbacks via `api.on(...)`

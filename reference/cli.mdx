@@ -1,50 +1,144 @@
 ---
 title: "CLI reference"
 sidebarTitle: "CLI reference"
-description: "All openclaw CLI commands, flags, and environment variables."
+description: "Every openclaw CLI command, subcommand, key flags, and environment variables."
 audience: admin
 ---
 
 # CLI reference
 
-The `openclaw` CLI is the primary interface for managing the gateway, channels, agents, and configuration. Install it globally via npm or pnpm — see [Getting started](/admin/getting-started).
+The `openclaw` CLI is the primary interface for managing the gateway, channels, agents, models, and configuration. Install it globally via npm or pnpm - see [Getting started](/admin/getting-started).
 
 ```bash
-openclaw --version    # show installed version
-openclaw --help       # list all top-level commands
-openclaw <command> --help  # help for a specific command
+openclaw --version            # show installed version (-V also works)
+openclaw --help               # list all top-level commands
+openclaw <command> --help     # help for a specific command
 ```
+
+<Note>
+This page summarises the command surface. Flags evolve between releases - when a flag is not listed here, run `openclaw <command> --help` for the authoritative set on your install.
+</Note>
 
 ## Global flags
 
+These apply to every command. Per-command flags such as `--json`, `--verbose`, and `--log-level` are documented under each command, not here.
+
 | Flag | Effect |
 | ---- | ------ |
-| `--log-level <level>` | Override log level for this command (`error`, `warn`, `info`, `debug`, `trace`) |
-| `--verbose` | Increase console verbosity (does not affect file log level) |
-| `--json` | Output as JSON where supported |
-| `--profile <name>` | Use a named gateway profile |
+| `--dev` | Isolate state under `~/.openclaw-dev` and shift default ports (gateway `19001`) |
+| `--profile <name>` | Isolate state under `~/.openclaw-<name>` for a named instance |
+| `--no-color` | Disable ANSI colours (`NO_COLOR=1` is also respected) |
+| `--update` | Shorthand for `openclaw update` (source installs only) |
+| `-V`, `--version`, `-v` | Print the version and exit |
+
+## Output styling
+
+- ANSI colours and progress indicators only render in TTY sessions.
+- OSC-8 hyperlinks render as clickable links in supported terminals; otherwise we fall back to plain URLs.
+- `--json` (and `--plain` where supported) disables styling for clean machine output.
+- Long-running commands show an OSC 9;4 progress indicator where supported.
 
 ---
 
-## Gateway commands
+## Setup and onboarding
+
+### `openclaw setup`
+
+Initialise config and workspace. Auto-runs the onboarding wizard when any wizard flag is present.
+
+```bash
+openclaw setup --workspace ~/.openclaw/workspace
+```
+
+Key flags: `--workspace <dir>`, `--wizard`, `--non-interactive`, `--mode <local\|remote>`, `--remote-url <url>`, `--remote-token <token>`.
+
+### `openclaw onboard`
+
+Interactive wizard to set up gateway, workspace, model auth, channels, and skills.
+
+```bash
+openclaw onboard                         # full onboarding wizard
+openclaw onboard --install-daemon        # also install the gateway service
+openclaw onboard --flow quickstart       # quickstart | advanced | manual
+```
+
+Key flags: `--workspace <dir>`, `--reset`, `--reset-scope <config\|config+creds+sessions\|full>`, `--non-interactive`, `--mode <local\|remote>`, `--flow <quickstart\|advanced\|manual>`, `--auth-choice <id>`, `--gateway-port <port>`, `--gateway-bind <loopback\|lan\|tailnet\|auto\|custom>`, `--gateway-auth <token\|password>`, `--tailscale <off\|serve\|funnel>`, `--install-daemon` / `--no-install-daemon`, `--node-manager <npm\|pnpm\|bun>`, `--json`. Many provider-specific key flags exist (for example `--anthropic-api-key`, `--openai-api-key`) - see `openclaw onboard --help`.
+
+### `openclaw configure`
+
+Interactive configuration wizard (models, channels, skills, gateway). Re-runs onboarding-style prompts against an existing config.
+
+### `openclaw completion`
+
+Print a shell completion script for your shell.
+
+```bash
+openclaw completion
+```
+
+### `openclaw reset`
+
+Reset local config/state while keeping the CLI installed.
+
+```bash
+openclaw reset --scope config+creds+sessions --yes
+```
+
+Key flags: `--scope <config\|config+creds+sessions\|full>`, `--yes`, `--non-interactive`, `--dry-run`. Non-interactive use requires both `--scope` and `--yes`.
+
+### `openclaw uninstall`
+
+Remove the gateway service and local data (the CLI itself remains).
+
+```bash
+openclaw uninstall --all --yes
+```
+
+Key flags: `--service`, `--state`, `--workspace`, `--app`, `--all`, `--yes`, `--non-interactive`, `--dry-run`.
+
+### `openclaw update`
+
+Update WednesdayAI to a newer version (source/npm installs).
+
+```bash
+openclaw update                  # update to latest on the current channel
+openclaw update --dry-run        # preview without applying
+openclaw update --channel beta   # stable | beta | dev
+openclaw update --tag <version>  # install a specific version
+```
+
+---
+
+## Gateway
 
 ### `openclaw gateway`
 
-Manage the gateway process.
+Run the WebSocket gateway in the foreground, or manage it as a system service. Subcommands cover the service lifecycle and RPC helpers.
 
 ```bash
-openclaw gateway status           # is it running?
-openclaw gateway status --deep    # deep probe: config + channel health
-openclaw gateway status --json    # machine-readable output
-openclaw gateway start            # start the gateway service
-openclaw gateway stop             # stop the gateway service
-openclaw gateway restart          # restart the gateway service
-openclaw gateway run              # run in foreground (Ctrl-C to stop)
-openclaw gateway install          # install as a system service (systemd/launchd)
-openclaw gateway uninstall        # remove system service
+openclaw gateway run                # run in foreground (Ctrl-C to stop)
+openclaw gateway start              # start the installed service
+openclaw gateway stop
+openclaw gateway restart
+openclaw gateway install            # install as systemd/launchd/schtasks service
+openclaw gateway uninstall
+openclaw gateway status             # probe the gateway RPC (default)
+openclaw gateway status --deep --json
+openclaw gateway health             # health snapshot via RPC
+openclaw gateway probe              # connectivity probe
+openclaw gateway discover           # discover gateways on the network
+openclaw gateway call <method> --params '<json>'   # invoke any RPC method
 ```
 
-The gateway runs on port `18789` by default. Override with `--port <n>` or `OPENCLAW_GATEWAY_PORT`.
+Foreground run flags: `--port <port>`, `--bind <loopback\|tailnet\|lan\|auto\|custom>`, `--token <token>`, `--auth <token\|password>`, `--password <password>`, `--tailscale <off\|serve\|funnel>`, `--allow-unconfigured`, `--force`, `--verbose`, `--ws-log <auto\|full\|compact>`.
+
+RPC subcommands (`call`, `health`, `status`, `probe`, `discover`) accept `--url`, `--token`, `--password`, `--timeout`, `--expect-final`.
+
+<Warning>
+When you pass `--url`, the CLI does **not** auto-apply config or environment credentials. Include `--token` or `--password` explicitly; missing credentials is an error.
+</Warning>
+
+The gateway runs on port `18789` by default. Common RPC methods for `gateway call`: `config.apply`, `config.patch`, `update.run`. See the [API reference](/reference/api) for the full method surface.
 
 **Systemd (Linux):**
 ```bash
@@ -52,277 +146,74 @@ systemctl --user start|stop|restart|status openclaw-gateway
 journalctl --user -u openclaw-gateway -f
 ```
 
-### `openclaw health`
+### `openclaw daemon`
 
-Fetch a health snapshot from the running gateway via WebSocket RPC.
-
-```bash
-openclaw health
-openclaw health --json
-openclaw health --verbose         # includes per-account timings and live channel probes
-openclaw health --timeout 5000    # timeout in ms (default: 10000)
-```
-
-Exits non-zero if the gateway is unreachable or any probe fails.
+Legacy alias namespace for the gateway service commands (`status`, `install`, `uninstall`, `start`, `stop`, `restart`). Prefer `openclaw gateway <subcommand>`.
 
 ### `openclaw status`
 
-Local + channel diagnostics summary.
+Local and channel diagnostics summary.
 
 ```bash
-openclaw status           # compact summary: gateway, channels, sessions
-openclaw status --all     # full local diagnosis (safe to paste for debugging)
-openclaw status --deep    # also probes running gateway for per-channel health
-openclaw status --usage   # include provider usage/quota summary
+openclaw status              # compact: gateway, channels, sessions
+openclaw status --all        # full local diagnosis (safe to paste)
+openclaw status --deep       # also probe the running gateway per-channel
+openclaw status --usage      # include provider usage/quota
 ```
+
+Key flags: `--json`, `--all`, `--deep`, `--usage`, `--timeout <ms>`, `--verbose`.
+
+### `openclaw health`
+
+Fetch a health snapshot from the running gateway via RPC. Exits non-zero if unreachable or any probe fails.
+
+```bash
+openclaw health --json --timeout 5000
+```
+
+Key flags: `--json`, `--timeout <ms>`, `--verbose`.
 
 ### `openclaw doctor`
 
-Health checks and guided repairs.
+Health checks and guided repairs (config, model auth, channel connectivity, service health, port collisions, permissions, legacy migrations).
 
 ```bash
-openclaw doctor               # interactive: prompts before applying fixes
-openclaw doctor --fix         # apply repairs (backs up config first)
-openclaw doctor --repair      # alias for --fix
-openclaw doctor --yes         # accept all prompts without asking
-openclaw doctor --deep        # also scan for extra/stale gateway installs
-openclaw doctor --non-interactive  # safe migrations only; no restart/service actions
+openclaw doctor              # interactive: prompts before applying fixes
+openclaw doctor --yes        # accept defaults without prompting
+openclaw doctor --deep       # scan for extra/stale gateway installs
 ```
 
-Checks performed: config validation, model auth status, channel connectivity, service health, port collisions, file permissions, security policy warnings, legacy state migrations.
+Key flags: `--yes`, `--non-interactive` (safe migrations only), `--deep`, `--no-workspace-suggestions`.
 
 ### `openclaw logs`
 
-Tail the gateway log file.
+Tail the gateway log file via RPC.
 
 ```bash
-openclaw logs --follow        # live tail (default: pretty, colorized)
-openclaw logs --json          # structured JSON output
-openclaw logs --plain         # plain text
-openclaw logs --no-color      # disable ANSI colors
+openclaw logs --follow       # live tail (pretty in a TTY)
+openclaw logs --limit 200
+openclaw logs --json         # line-delimited JSON
+openclaw logs --plain
+openclaw logs --no-color
 ```
-
-### `openclaw update`
-
-Update to a newer version of WednesdayAI.
-
-```bash
-openclaw update               # update to latest on current channel
-openclaw update --dry-run     # preview without applying
-openclaw update --channel stable|beta|dev
-openclaw update --tag <version>  # install specific version
-```
-
----
-
-## Authentication and providers
-
-### `openclaw login`
-
-Authenticate with an AI provider.
-
-```bash
-openclaw login                           # interactive provider selection
-openclaw login --provider anthropic      # authenticate with Anthropic
-openclaw login --provider openai
-```
-
-### `openclaw models`
-
-Manage AI model credentials and selection.
-
-```bash
-openclaw models status                   # current auth profiles
-openclaw models status --check          # exit 0=OK, 1=expired, 2=expiring
-openclaw models list                    # available models
-openclaw models auth paste-token --provider anthropic
-openclaw models auth order get --provider anthropic
-openclaw models auth order set --provider anthropic anthropic:work
-openclaw models auth order clear --provider anthropic
-```
-
----
-
-## Channels
-
-### `openclaw channels`
-
-Manage channel connections.
-
-```bash
-openclaw channels list                   # installed channels and status
-openclaw channels status                 # connectivity summary
-openclaw channels status --probe        # live probe all channels
-openclaw channels status --channel whatsapp
-openclaw channels login --channel whatsapp           # link/authenticate
-openclaw channels login --channel whatsapp --account work
-openclaw channels logout --channel whatsapp
-openclaw channels logs --channel telegram --follow
-```
-
----
-
-## Pairing
-
-### `openclaw pairing`
-
-Manage device and sender pairing approvals.
-
-```bash
-openclaw pairing list                    # pending pairing requests
-openclaw pairing list whatsapp           # for a specific channel
-openclaw pairing approve whatsapp <CODE>
-openclaw pairing deny whatsapp <CODE>
-openclaw pairing list --all              # approved + pending
-```
-
-### `openclaw devices`
-
-Manage paired devices (CLI client certificates).
-
-```bash
-openclaw devices list
-openclaw devices revoke <deviceId>
-openclaw devices rotate                  # rotate your own device token
-```
-
----
-
-## Configuration
-
-### `openclaw config`
-
-Read and write gateway configuration.
-
-```bash
-openclaw config get                      # print full config
-openclaw config get agents.defaults.model.primary
-openclaw config set agents.defaults.model.primary '"anthropic/claude-sonnet-4-5"' --json
-openclaw config unset channels.telegram.dmPolicy
-```
-
-Values are JSON (use `--json` flag) or plain strings.
-
-### `openclaw onboard` / `openclaw configure`
-
-Interactive setup wizard.
-
-```bash
-openclaw onboard                         # full onboarding wizard
-openclaw onboard --install-daemon        # also install gateway service
-openclaw configure                       # re-run configuration wizard
-openclaw configure --section model       # configure only model credentials
-```
-
----
-
-## Security
-
-### `openclaw security`
-
-Security audit and vulnerability scan.
-
-```bash
-openclaw security audit                  # flag common misconfigurations
-openclaw security audit --deep           # also check network exposure
-openclaw security audit --fix            # auto-fix safe issues
-openclaw security audit --json           # machine-readable output
-```
-
----
-
-## Sessions and agents
-
-### `openclaw sessions`
-
-View and manage agent sessions.
-
-```bash
-openclaw sessions list
-openclaw sessions list --agent main
-openclaw sessions view <sessionKey>
-openclaw sessions clear <sessionKey>     # clear session history
-```
-
-### `openclaw agents`
-
-Manage agent configurations.
-
-```bash
-openclaw agents list
-openclaw agents status
-```
-
----
-
-## Messaging
-
-### `openclaw message`
-
-Send messages from the CLI.
-
-```bash
-openclaw message send --target +15555550123 --message "Hello"
-openclaw message send --channel telegram --target 123456789 --message "Test"
-openclaw message send --channel discord --target "channel:123" --message "Test"
-```
-
----
-
-## Skills and hooks
-
-### `openclaw skills`
-
-Manage agent skills.
-
-```bash
-openclaw skills list                     # installed skills
-openclaw skills enable <name>
-openclaw skills disable <name>
-openclaw skills install <path-or-spec>
-openclaw skills info <name>
-```
-
-### `openclaw hooks`
-
-Manage gateway hooks.
-
-```bash
-openclaw hooks list                      # all hooks with enable/disable status
-openclaw hooks enable <name>
-openclaw hooks disable <name>
-openclaw hooks install <path-or-spec>
-openclaw hooks info <name>
-openclaw hooks check                     # verify hook requirements
-```
-
----
-
-## Cron
-
-### `openclaw cron`
-
-Manage scheduled jobs.
-
-```bash
-openclaw cron list                       # all cron jobs
-openclaw cron add --schedule "0 9 * * *" --message "Morning briefing"
-openclaw cron remove <id>
-openclaw cron run <id>                   # run a job immediately
-openclaw cron logs <id>                  # view job run history
-```
-
----
-
-## System
 
 ### `openclaw dashboard`
 
-Open the control panel in your browser.
+Open the control panel in your browser (default `http://localhost:18789/`).
 
 ```bash
-openclaw dashboard                       # open http://localhost:18789/
+openclaw dashboard
 ```
+
+### `openclaw tui`
+
+Open the terminal UI connected to the gateway.
+
+```bash
+openclaw tui --session main --message "status?"
+```
+
+Key flags: `--url <url>`, `--token <token>`, `--password <password>`, `--session <key>`, `--deliver`, `--thinking <level>`, `--message <text>`, `--timeout-ms <ms>`, `--history-limit <n>`.
 
 ### `openclaw qr`
 
@@ -333,14 +224,446 @@ openclaw qr
 openclaw qr --channel whatsapp
 ```
 
-### `openclaw uninstall`
+---
 
-Remove WednesdayAI and its data.
+## Authentication, models, and providers
+
+### `openclaw models`
+
+Manage AI model credentials and selection. `openclaw models` with no subcommand is an alias for `models status`.
 
 ```bash
-openclaw uninstall                       # guided uninstall
-openclaw uninstall --purge              # also remove ~/.openclaw/ data directory
+openclaw models status                   # auth overview + OAuth expiry
+openclaw models status --check           # exit 1=expired/missing, 2=expiring
+openclaw models status --probe           # live probe (consumes tokens)
+openclaw models list --all
+openclaw models set anthropic/claude-sonnet-4-5
+openclaw models set-image openai/gpt-image-1
+openclaw models auth setup-token --provider anthropic
+openclaw models auth paste-token --provider anthropic
+openclaw models auth order set --provider anthropic anthropic:work
 ```
+
+Subcommands: `list`, `status`, `set <model>`, `set-image <model>`, `aliases list\|add\|rm`, `fallbacks list\|add\|rm\|clear`, `image-fallbacks list\|add\|rm\|clear`, `scan`, `auth add\|setup-token\|paste-token`, `auth order get\|set\|clear`.
+
+`models set` writes `agents.defaults.model.primary`; `models set-image` writes `agents.defaults.imageModel.primary`.
+
+---
+
+## Channels and pairing
+
+### `openclaw channels`
+
+Manage chat channel accounts.
+
+```bash
+openclaw channels list                   # configured channels and auth profiles
+openclaw channels status --probe         # connectivity + live probe
+openclaw channels add --channel telegram --account alerts --name "Alerts Bot" --token $TELEGRAM_BOT_TOKEN
+openclaw channels remove --channel discord --account work --delete
+openclaw channels login --channel whatsapp --account work    # WhatsApp Web only
+openclaw channels logout --channel whatsapp
+openclaw channels logs --channel telegram --lines 200
+```
+
+Subcommands: `list`, `status`, `logs`, `add`, `remove`, `login`, `logout`. Common flags: `--channel <name>`, `--account <id>`, `--name <label>`, `--json`. `--channel` accepts `whatsapp\|telegram\|discord\|googlechat\|slack\|mattermost\|signal\|imessage\|msteams` (plus installed channel extensions). `channels add` runs a wizard when no flags are passed; flags switch to non-interactive mode.
+
+### `openclaw pairing`
+
+Approve DM pairing requests across channels.
+
+```bash
+openclaw pairing list                            # all pending requests
+openclaw pairing list whatsapp --json
+openclaw pairing approve whatsapp <CODE> --notify
+```
+
+Subcommands: `list [channel]`, `approve <channel> <code>`. Flags: `--channel <channel>`, `--account <id>`, `--json`, `--notify` (on `approve`).
+
+<Warning>
+There is no `pairing deny` and no `pairing list --all`. To refuse a sender, leave the request unapproved or tighten `channels.<channel>.dmPolicy`/`allowFrom`.
+</Warning>
+
+### `openclaw devices`
+
+Manage gateway device-pairing entries and per-role device tokens.
+
+```bash
+openclaw devices list --json
+openclaw devices approve --latest
+openclaw devices reject <requestId>
+openclaw devices remove <deviceId>
+openclaw devices clear --yes
+openclaw devices rotate --device <id> --role <role>
+openclaw devices revoke --device <id> --role <role>
+```
+
+Subcommands: `list`, `approve [requestId] [--latest]`, `reject <requestId>`, `remove <deviceId>`, `clear --yes [--pending]`, `rotate --device <id> --role <role> [--scope <scope...>]`, `revoke --device <id> --role <role>`.
+
+---
+
+## Configuration
+
+### `openclaw config`
+
+Read and write gateway configuration. Running `openclaw config` with no subcommand launches the wizard.
+
+```bash
+openclaw config get                                   # print full config
+openclaw config get agents.defaults.model.primary
+openclaw config set agents.defaults.model.primary '"anthropic/claude-sonnet-4-5"'
+openclaw config unset channels.telegram.dmPolicy
+openclaw config file                                  # print active config path
+openclaw config validate --json                       # validate against schema
+```
+
+Subcommands: `get <path>`, `set <path> <value>` (value is JSON5 or a raw string), `unset <path>`, `file`, `validate`.
+
+### `openclaw secrets`
+
+Manage SecretRef resolution and provider mappings.
+
+```bash
+openclaw secrets reload                 # re-resolve refs, atomically swap runtime snapshot
+openclaw secrets audit                  # scan for plaintext residues / unresolved refs
+openclaw secrets configure              # interactive provider + SecretRef setup
+openclaw secrets apply --from plan.json --dry-run
+```
+
+Subcommands: `reload`, `audit`, `configure`, `apply --from <plan.json>` (`migrate` also exists as an alias surface).
+
+### `openclaw directory`
+
+Inspect the resolved state/config directory layout for the active instance.
+
+```bash
+openclaw directory
+```
+
+### `openclaw dns`
+
+Wide-area discovery DNS helper (CoreDNS + Tailscale).
+
+```bash
+openclaw dns setup --apply        # install/update CoreDNS config (sudo; macOS only)
+```
+
+See [/gateway/discovery](/gateway/discovery).
+
+---
+
+## Agents, sessions, and ACP
+
+### `openclaw agent`
+
+Run one agent turn via the gateway (or `--local` embedded).
+
+```bash
+openclaw agent --message "Summarise today" --to whatsapp:+15555550123 --deliver
+```
+
+Required: `--message <text>`. Key flags: `--to <dest>`, `--session-id <id>`, `--thinking <off\|minimal\|low\|medium\|high\|xhigh>`, `--verbose <on\|full\|off>`, `--channel <name>`, `--local`, `--deliver`, `--json`, `--timeout <seconds>`.
+
+### `openclaw agents`
+
+Manage isolated agents (workspaces + auth + routing). There is no `agents status`.
+
+```bash
+openclaw agents list --bindings
+openclaw agents add work --workspace ~/.openclaw/workspace-work --bind whatsapp:biz
+openclaw agents bindings --agent work
+openclaw agents bind --agent work --bind discord:guild
+openclaw agents unbind --agent work --bind discord:guild
+openclaw agents delete work --force
+```
+
+Subcommands: `list`, `add [name]`, `bindings`, `bind`, `unbind`, `delete <id>`. Binding specs use `channel[:accountId]`. `--workspace` is required for non-interactive `add`.
+
+### `openclaw sessions`
+
+List stored conversation sessions.
+
+```bash
+openclaw sessions list --active 60 --json
+```
+
+Key flags: `--json`, `--verbose`, `--store <path>`, `--active <minutes>`.
+
+### `openclaw acp`
+
+Run the ACP bridge that connects IDEs (Agent Client Protocol) to the gateway. See [`acp`](/cli/acp) for options.
+
+---
+
+## Messaging
+
+### `openclaw message`
+
+Unified outbound messaging and channel actions.
+
+```bash
+openclaw message send --target +15555550123 --message "Hello"
+openclaw message send --channel discord --target channel:123 --message "Test"
+openclaw message poll --channel discord --target channel:123 \
+  --poll-question "Snack?" --poll-option Pizza --poll-option Sushi
+```
+
+Subcommands: `send`, `poll`, `react`, `reactions`, `read`, `edit`, `delete`, `pin`, `unpin`, `pins`, `permissions`, `search`, `timeout`, `kick`, `ban`, `thread <create\|list\|reply>`, `emoji <list\|upload>`, `sticker <send\|upload>`, `role <info\|add\|rm>`, `channel <info\|list>`, `member info`, `voice status`, `event <list\|create>`. See [/cli/message](/cli/message) for per-subcommand flags.
+
+---
+
+## Skills and hooks
+
+### `openclaw skills`
+
+List and inspect available skills plus readiness info. Skills are **read-only** from the CLI.
+
+```bash
+openclaw skills list --eligible
+openclaw skills info <name>
+openclaw skills check
+```
+
+Subcommands: `list`, `info <name>`, `check`. Flags: `--eligible`, `--json`, `--verbose`.
+
+<Note>
+There is no `skills enable`, `skills disable`, or `skills install`. Use `npx clawhub` to search, install, and sync skills; control which bundled skills load via `skills.allowBundled` and `skills.load.extraDirs` in config.
+</Note>
+
+### `openclaw hooks`
+
+Manage gateway hooks.
+
+```bash
+openclaw hooks list                      # all hooks with enabled/disabled status
+openclaw hooks info <name>
+openclaw hooks check                     # verify enabled hooks can load
+openclaw hooks enable <name>
+openclaw hooks disable <name>
+openclaw hooks install ./path/to/hook
+openclaw hooks update <name>             # update an installed hook
+```
+
+Subcommands: `list`, `info`, `check`, `enable`, `disable`, `install`, `update`. See the [Hooks catalogue](/reference/hooks-catalogue).
+
+---
+
+## Plugins
+
+### `openclaw plugins`
+
+Manage extensions and their config. Most plugin changes require a gateway restart.
+
+```bash
+openclaw plugins list --json
+openclaw plugins info <id>
+openclaw plugins install <path|.tgz|npm-spec>
+openclaw plugins enable <id>
+openclaw plugins disable <id>
+openclaw plugins doctor                  # report plugin load errors
+```
+
+Subcommands: `list`, `info <id>`, `install`, `enable <id>`, `disable <id>`, `doctor`.
+
+---
+
+## Memory
+
+### `openclaw memory`
+
+Vector search over `MEMORY.md` and `memory/*.md`.
+
+```bash
+openclaw memory status                   # index stats
+openclaw memory index                    # reindex memory files
+openclaw memory search "deployment notes"
+```
+
+Subcommands: `status`, `index`, `search "<query>"` (`--query` also accepted).
+
+---
+
+## Nodes and node host
+
+### `openclaw nodes`
+
+Target paired nodes (mobile/desktop) via the gateway.
+
+```bash
+openclaw nodes list --connected
+openclaw nodes status
+openclaw nodes pending
+openclaw nodes approve <requestId>
+openclaw nodes reject <requestId>
+openclaw nodes describe --node <id|name|ip>
+openclaw nodes rename --node <id> --name "Studio Mac"
+openclaw nodes run --node <id> -- ls -la
+openclaw nodes camera snap --node <id> --facing front
+openclaw nodes screen record --node <id> --duration 10s
+openclaw nodes notify --node <id> --title "Hi" --body "Ping"   # mac only
+```
+
+Subcommands include: `status`, `list`, `pending`, `approve`, `reject`, `describe`, `rename`, `invoke`, `run`, `notify`, `camera <list\|snap\|clip>`, `canvas <snapshot\|present\|hide\|navigate\|eval\|a2ui>`, `screen record`, `location get`. Common flags: `--url`, `--token`, `--timeout`, `--json`. See [/nodes](/nodes).
+
+### `openclaw node`
+
+Run a headless node host, or manage it as a background service.
+
+```bash
+openclaw node run --host gateway-host --port 18789
+openclaw node install --host gateway-host --tls --runtime node
+openclaw node status
+openclaw node start|stop|restart|uninstall
+```
+
+Subcommands: `run`, `status`, `install`, `uninstall`, `start`, `stop`, `restart`. See [`openclaw node`](/cli/node).
+
+---
+
+## Approvals and sandbox
+
+### `openclaw approvals`
+
+Manage exec-approval policy and allowlists.
+
+```bash
+openclaw approvals get
+openclaw approvals set <policy>
+openclaw approvals allowlist add <pattern>
+openclaw approvals allowlist remove <pattern>
+```
+
+Subcommands: `get`, `set`, `allowlist add\|remove`.
+
+### `openclaw sandbox`
+
+Inspect and manage agent sandboxes.
+
+```bash
+openclaw sandbox list
+openclaw sandbox explain               # explain effective sandbox policy
+openclaw sandbox recreate
+```
+
+Subcommands: `list`, `recreate`, `explain`.
+
+---
+
+## Browser
+
+### `openclaw browser`
+
+Control a dedicated Chrome/Brave/Edge/Chromium instance. Common flags: `--url`, `--token`, `--timeout`, `--json`, `--browser-profile <name>`.
+
+```bash
+openclaw browser status
+openclaw browser start
+openclaw browser open https://example.com
+openclaw browser navigate https://example.com --target-id <id>
+openclaw browser screenshot --full-page
+openclaw browser snapshot --format ai
+openclaw browser click <ref>
+openclaw browser type <ref> "hello" --submit
+openclaw browser pdf
+```
+
+Manage: `status`, `start`, `stop`, `reset-profile`, `tabs`, `open <url>`, `focus <targetId>`, `close [targetId]`, `profiles`, `create-profile`, `delete-profile`.
+Inspect: `screenshot`, `snapshot`.
+Actions: `navigate`, `resize`, `click`, `type`, `press`, `hover`, `drag`, `select`, `upload`, `fill`, `dialog`, `wait`, `evaluate`, `console`, `pdf`. See [`openclaw browser`](/cli/browser) and the [Browser tool](/tools/browser).
+
+---
+
+## System
+
+### `openclaw system`
+
+Enqueue system events and manage heartbeat/presence (gateway RPC).
+
+```bash
+openclaw system event --text "Deploy finished" --mode next-heartbeat
+openclaw system heartbeat last
+openclaw system heartbeat enable
+openclaw system presence
+```
+
+Subcommands: `event` (`--text` required; `--mode <now\|next-heartbeat>`), `heartbeat last\|enable\|disable`, `presence`. All accept `--json`, `--url`, `--token`, `--timeout`, `--expect-final`.
+
+---
+
+## Cron
+
+### `openclaw cron`
+
+Manage scheduled jobs (gateway RPC). See [/automation/cron-jobs](/automation/cron-jobs).
+
+```bash
+openclaw cron list --all
+openclaw cron status
+openclaw cron add --name "Morning briefing" --cron "0 9 * * *" --message "Daily summary"
+openclaw cron edit <id>
+openclaw cron rm <id>
+openclaw cron enable <id>
+openclaw cron disable <id>
+openclaw cron run <id> --force
+openclaw cron runs --id <id> --limit 20
+```
+
+Subcommands: `status`, `list`, `add` (alias `create`), `edit <id>`, `rm <id>` (aliases `remove`, `delete`), `enable <id>`, `disable <id>`, `runs --id <id>`, `run <id>`.
+
+<Warning>
+Use `--cron` for cron expressions (not `--schedule`). `cron add` requires `--name` and exactly one schedule of `--at` / `--every` / `--cron`, plus exactly one payload of `--message` / `--system-event`. Use `cron rm` (canonical) for deletion and `cron runs --id <id>` (not `logs`) for run history.
+</Warning>
+
+---
+
+## Security
+
+### `openclaw security`
+
+Audit config and local state for common security foot-guns.
+
+```bash
+openclaw security audit                  # flag misconfigurations
+openclaw security audit --deep           # best-effort live gateway probe
+openclaw security audit --fix            # tighten safe defaults and chmod state
+```
+
+Subcommand: `audit`. Flags: `--deep`, `--fix`, `--json`.
+
+---
+
+## Webhooks and docs
+
+### `openclaw webhooks`
+
+Inbound webhook helpers.
+
+```bash
+openclaw webhooks gmail setup --account you@example.com
+openclaw webhooks gmail run
+```
+
+Subcommands: `gmail setup`, `gmail run`. See [/automation/gmail-pubsub](/automation/gmail-pubsub).
+
+### `openclaw docs`
+
+Search the live docs index.
+
+```bash
+openclaw docs "remote access"
+```
+
+---
+
+## Legacy and plugin commands
+
+### `openclaw clawbot`
+
+Legacy alias namespace (for example `openclaw clawbot qr`). Prefer the modern equivalents.
+
+### `openclaw voicecall`
+
+Provided by the voice-call plugin when installed. Plugins can register additional top-level commands.
 
 ---
 
@@ -356,6 +679,7 @@ openclaw uninstall --purge              # also remove ~/.openclaw/ data director
 | `OPENCLAW_STATE_DIR` | Override state directory |
 | `OPENCLAW_LOG_LEVEL` | Log level override (`error`, `warn`, `info`, `debug`, `trace`) |
 | `OPENCLAW_LOAD_SHELL_ENV=1` | Import missing vars from login shell |
+| `NO_COLOR=1` | Disable ANSI colours |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | OpenAI API key |
 | `GOOGLE_API_KEY` | Google AI API key |
@@ -367,5 +691,7 @@ openclaw uninstall --purge              # also remove ~/.openclaw/ data director
 ## Related
 
 - [Gateway configuration reference](/reference/config)
+- [Gateway API reference](/reference/api)
+- [Hooks catalogue](/reference/hooks-catalogue)
 - [Health checks](/admin/gateway/health-checks)
 - [Troubleshooting](/admin/troubleshooting)

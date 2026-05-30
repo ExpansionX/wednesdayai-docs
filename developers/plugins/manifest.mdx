@@ -1,0 +1,115 @@
+---
+title: "Plugin manifest"
+description: "The openclaw.plugin.json manifest: required and optional fields, the config schema, and validation behaviour."
+audience: developer
+---
+
+# Plugin manifest
+
+Every plugin **must** ship an `openclaw.plugin.json` file in the **plugin root**. WednesdayAI uses this manifest to validate plugin configuration **without executing plugin code**. A missing or invalid manifest is treated as a plugin error and blocks config validation.
+
+<Note>
+  The manifest is distinct from the `package.json` `"openclaw"` key. The manifest
+  (`openclaw.plugin.json`) drives **config validation**; the `package.json` key drives
+  **workspace/pack discovery**. A published plugin usually ships both.
+</Note>
+
+## Required fields
+
+```json
+{
+  "id": "my-plugin",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
+```
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `id` | `string` | Canonical plugin id. Must match the plugin directory and npm package name. |
+| `configSchema` | `object` | Inline JSON Schema for the plugin's config. Required even if the plugin takes no config. |
+
+## Optional fields
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `name` | `string` | Display name. |
+| `description` | `string` | Short summary. |
+| `version` | `string` | Plugin version (informational). |
+| `kind` | `string` | Plugin kind, e.g. `"memory"`. |
+| `channels` | `string[]` | Channel ids this plugin registers, e.g. `["matrix"]`. |
+| `providers` | `string[]` | Provider ids this plugin registers. |
+| `skills` | `string[]` | Skill directories to load, relative to the plugin root. |
+| `uiHints` | `object` | Per-field config UI hints (label, placeholder, `sensitive`, `advanced`). |
+
+## The config schema
+
+```json
+{
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": { "type": "string", "description": "API key for the service." },
+      "timeoutMs": { "type": "number", "description": "Request timeout." }
+    },
+    "required": ["apiKey"]
+  },
+  "uiHints": {
+    "apiKey": { "label": "API Key", "sensitive": true },
+    "timeoutMs": { "label": "Timeout (ms)", "advanced": true }
+  }
+}
+```
+
+Rules:
+
+- **Every plugin must ship a JSON Schema**, even when it accepts no config.
+- An empty schema is acceptable: `{ "type": "object", "additionalProperties": false }`.
+- Set `additionalProperties: false` so typos in user config surface as errors instead of being silently ignored.
+- Schemas are validated at config read/write time, not at runtime.
+- The manifest is plain JSON — no comments, no trailing commas.
+
+### `uiHints`
+
+`uiHints` keys mirror your `configSchema` property names and control how the control UI renders each field:
+
+| Hint | Effect |
+| ---- | ------ |
+| `label` | Field label |
+| `help` | Help text |
+| `placeholder` | Input placeholder |
+| `sensitive` | Render as a secret (masked) input |
+| `advanced` | Hide behind an "advanced" disclosure |
+| `tags` | Grouping tags |
+
+## Where config lands
+
+Users set plugin config under the plugin's `id`. Inside `register`, it arrives as `api.pluginConfig` (`Record<string, unknown> | undefined`). Always handle a missing or partial config gracefully.
+
+## Validation behaviour
+
+- Unknown `channels.*` config keys are **errors** unless the channel id is declared by a plugin manifest.
+- `plugins.entries.<id>`, `plugins.allow`, `plugins.deny`, and `plugins.slots.*` must reference **discoverable** plugin ids. Unknown ids are **errors**.
+- If a plugin is installed but has a broken or missing manifest or schema, validation fails and Doctor reports the plugin error.
+- If plugin config exists but the plugin is **disabled**, the config is kept and a **warning** is surfaced in Doctor and logs.
+
+<Tip>
+  Run `openclaw plugins doctor` to see manifest, schema, and config issues across all
+  discovered plugins.
+</Tip>
+
+## Native dependencies
+
+If your plugin depends on native modules, document the build steps and any package-manager allowlist requirements (for example pnpm `allow-build-scripts` / `pnpm rebuild <package>`). `openclaw plugins install` runs dependency installs with `--ignore-scripts`, so postinstall build steps will not run automatically.
+
+## What's next
+
+- [Write your first plugin](/developers/plugins/your-first-plugin)
+- [Publishing a plugin](/developers/plugins/publishing)
+- [Plugin SDK reference](/developers/sdk)

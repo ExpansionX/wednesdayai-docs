@@ -1,57 +1,110 @@
 ---
 title: "Channel adapters"
-description: "Build a new channel adapter to connect WednesdayAI to a messaging platform."
+description: "Build a new channel adapter: the real ChannelPlugin adapter-composition model, registration, and packaging."
 audience: developer
 ---
 
 # Channel adapters
 
-A channel adapter connects WednesdayAI to a messaging platform. Each channel is a plugin that implements the `ChannelPlugin<TAccount>` contract from the plugin SDK.
+A channel adapter connects WednesdayAI to a messaging platform. A channel is a plugin that exposes a `ChannelPlugin` object — a **composition of small adapter interfaces**, each owning one concern (auth, messaging, outbound delivery, status, setup, onboarding, and more). You implement only the adapters your platform needs; the rest are optional.
 
-## Overview
+<Note>
+  `ChannelPlugin` is not a flat object with `login` / `logout` / `send` / `handleEvent`
+  methods. Those names are not part of the contract. The real model is a set of named
+  adapter slots, each typed by its own interface and re-exported from `openclaw/plugin-sdk`.
+</Note>
 
-Channel plugins live under `extensions/` in the repo. Each is a pnpm workspace package:
+## The `ChannelPlugin` shape
 
-```
-extensions/my-channel/
-├── package.json
-├── src/
-│   ├── index.ts       # plugin export
-│   ├── adapter.ts     # ChannelPlugin implementation
-│   └── types.ts
-└── vitest.config.ts
-```
-
-## Plugin contract
-
-A channel plugin is a plain object implementing `ChannelPlugin<TAccount>`:
-
-```typescript
+```ts
 import type { ChannelPlugin } from "openclaw/plugin-sdk";
 
-interface MyAccount {
-  id: string;
-  token: string;
-}
-
-const myChannel: ChannelPlugin<MyAccount> = {
-  id: "my-channel",           // must match package name and directory
-  name: "My Channel",         // display name
-  displayName: "My Channel",
-
-  // Account operations
-  async login(ctx) { /* authenticate and return account */ },
-  async logout(ctx) { /* revoke credentials */ },
-  async status(ctx) { /* check connectivity */ },
-
-  // Message handling
-  async send(ctx, message) { /* send a message */ },
-
-  // Webhook/event handler
-  async handleEvent(ctx, event) { /* process incoming event */ },
+const myChannel: ChannelPlugin<MyResolvedAccount> = {
+  id: "my-channel", // ChannelId — must match the plugin id and directory
+  meta: {
+    /* display name, labels, channel metadata */
+  },
+  capabilities: {
+    /* what the channel supports: media, threads, reactions, etc. */
+  },
+  config: myConfigAdapter, // required: resolves accounts from config
+  // Optional adapter slots — implement what your platform needs:
+  auth: myAuthAdapter,
+  setup: mySetupAdapter,
+  onboarding: myOnboardingAdapter,
+  messaging: myMessagingAdapter,
+  outbound: myOutboundAdapter,
+  status: myStatusAdapter,
+  security: mySecurityAdapter,
+  groups: myGroupAdapter,
+  mentions: myMentionAdapter,
+  // ...and more (see the adapter slots table)
 };
 
 export default myChannel;
+```
+
+`ChannelPlugin<ResolvedAccount, Probe, Audit>` is generic. `ResolvedAccount` is the per-account type your `config` adapter resolves; `Probe` and `Audit` are channel-specific status types.
+
+### Adapter slots
+
+| Slot | Adapter type | Owns |
+| ---- | ------------ | ---- |
+| `config` (required) | `ChannelConfigAdapter` | Resolving accounts from config |
+| `meta` (required) | `ChannelMeta` | Display name and channel metadata |
+| `capabilities` (required) | `ChannelCapabilities` | Declared feature support |
+| `auth` | `ChannelAuthAdapter` | Login/logout, credential handling |
+| `setup` | `ChannelSetupAdapter` | First-run setup |
+| `onboarding` | `ChannelOnboardingAdapter` | CLI onboarding wizard steps |
+| `messaging` | `ChannelMessagingAdapter` | Inbound message handling |
+| `outbound` | `ChannelOutboundAdapter` | Delivering outbound replies |
+| `status` | `ChannelStatusAdapter` | Connectivity/health status |
+| `security` | `ChannelSecurityAdapter` | DM policy, allowlist enforcement |
+| `pairing` | `ChannelPairingAdapter` | Pairing flow |
+| `groups` | `ChannelGroupAdapter` | Group/channel handling |
+| `mentions` | `ChannelMentionAdapter` | Mention gating |
+| `threading` | `ChannelThreadingAdapter` | Threads/topics |
+| `streaming` | `ChannelStreamingAdapter` | Streaming/partial replies |
+| `commands` | `ChannelCommandAdapter` | Channel-specific commands |
+| `directory` | `ChannelDirectoryAdapter` | Peer/group directory listing |
+| `resolver` | `ChannelResolverAdapter` | Target resolution |
+| `actions` | `ChannelMessageActionAdapter` | Message actions |
+| `heartbeat` | `ChannelHeartbeatAdapter` | Heartbeat delivery |
+| `gateway` | `ChannelGatewayAdapter` | Gateway-side methods |
+| `agentTools` | `ChannelAgentToolFactory` or `ChannelAgentTool[]` | Channel-owned agent tools |
+
+Each adapter type is imported from `openclaw/plugin-sdk`. Implement an adapter in its own file (`src/auth.ts`, `src/messaging.ts`, etc.) and compose them in the plugin object.
+
+## Registering the channel
+
+A channel plugin is registered from the plugin's `register` function via `api.registerChannel(...)`:
+
+```ts
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { myChannel } from "./channel.js";
+
+export default function register(api: OpenClawPluginApi): void {
+  api.registerChannel(myChannel);
+  // Or, with an optional dock:
+  // api.registerChannel({ plugin: myChannel, dock: myDock });
+}
+```
+
+## Repo layout
+
+Channel plugins live under `extensions/` as pnpm workspace packages:
+
+```text
+extensions/my-channel/
+├── package.json
+├── openclaw.plugin.json   # manifest (id + configSchema)
+├── src/
+│   ├── index.ts           # register() — calls api.registerChannel()
+│   ├── channel.ts         # the ChannelPlugin object
+│   ├── auth.ts            # ChannelAuthAdapter
+│   ├── messaging.ts       # ChannelMessagingAdapter
+│   └── outbound.ts        # ChannelOutboundAdapter
+└── vitest.config.ts
 ```
 
 ## package.json requirements
@@ -60,13 +113,12 @@ export default myChannel;
 {
   "name": "@wednesdayai/my-channel",
   "version": "1.0.0",
+  "type": "module",
   "openclaw": {
-    "id": "my-channel",
-    "displayName": "My Channel",
-    "type": "channel"
+    "id": "my-channel"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.2"
+    "openclaw": "2026.3.2"
   },
   "devDependencies": {
     "openclaw": "2026.3.2"
@@ -75,73 +127,51 @@ export default myChannel;
 ```
 
 Rules:
-- Plugin id, directory name, and npm package name must match exactly
-- `openclaw` goes in `devDependencies` or `peerDependencies`, never `dependencies`
-- No `workspace:*` in `dependencies`
+
+- Plugin id, directory name, and npm package name must match exactly.
+- **Pin `openclaw` to exactly `2026.3.2`** (the fork base) in both `peerDependencies` and `devDependencies`. Do not use a range like `>=2026.3.2` — plugins built against a newer openclaw may import APIs that do not exist in this fork.
+- `openclaw` goes in `devDependencies` / `peerDependencies`, never `dependencies`.
+- No `workspace:*` in `dependencies`.
+
+<Note>
+  The `package.json` `"openclaw"` key carries the id used for workspace discovery. A separate
+  `openclaw.plugin.json` manifest (with `id` and `configSchema`) is still required at the
+  plugin root for config validation. See the [manifest reference](/developers/plugins/manifest).
+</Note>
 
 ## Account model
 
-The `TAccount` type parameter represents a linked account for the channel. It is stored per-account in the gateway state.
-
-For channels with credential storage:
-- Credentials go in `~/.openclaw/credentials/<channel>/<accountId>/`
-- Use the credential store helpers from the plugin SDK rather than writing files directly
-
-## Incoming messages
-
-Incoming events (webhooks, polling) are handled by `handleEvent`. Parse the raw event into a `ChannelMessage` and return it:
-
-```typescript
-async handleEvent(ctx, rawEvent) {
-  const message: ChannelMessage = {
-    id: rawEvent.message_id,
-    chatId: rawEvent.chat_id,
-    senderId: rawEvent.from,
-    text: rawEvent.text,
-    timestamp: new Date(rawEvent.timestamp),
-  };
-  return { messages: [message] };
-},
-```
-
-## Outgoing messages
-
-The `send` method receives a structured `OutgoingMessage` and delivers it to the platform:
-
-```typescript
-async send(ctx, message) {
-  await myPlatformClient.sendMessage({
-    chatId: message.chatId,
-    text: message.text,
-    // attachments, formatting, etc.
-  });
-},
-```
+The `ResolvedAccount` type parameter is the per-account record your `config` adapter resolves from configuration. For channels that store credentials, keep them under `~/.openclaw/credentials/<channel>/` and use the SDK credential and config helpers rather than writing files directly.
 
 ## Testing a channel adapter
 
-Write integration tests in `extensions/my-channel/src/*.test.ts`. Mock the platform client; do not make live API calls in unit tests.
+Test each adapter in isolation. Mock the platform client; do not make live API calls in unit tests.
 
 ```bash
 pnpm --filter @wednesdayai/my-channel test
 ```
 
-Live integration tests (requires credentials):
+Live integration tests (require credentials) run under a dedicated live script:
 
 ```bash
 MY_CHANNEL_TOKEN=... pnpm --filter @wednesdayai/my-channel test:live
 ```
 
-## Adding docs
+## Docs and PR checklist for a new channel
 
-Create `docs/channels/my-channel.md` in the main repo with setup instructions for the new channel. Update `docs/channels/` index to include the new channel.
+When adding a channel, update every surface that lists channels (onboarding/overview docs, control UI, mobile/macOS app where applicable) and add matching status and configuration forms.
 
-## PR checklist for new channels
-
-- [ ] Adapter implements the full `ChannelPlugin<TAccount>` contract
-- [ ] Package name is `@wednesdayai/<channel>`, id matches directory name
-- [ ] No `workspace:*` in `dependencies`
+- [ ] `ChannelPlugin` composes the adapters the platform needs (`config`, `meta`, `capabilities` at minimum)
+- [ ] Registered via `api.registerChannel(...)`
+- [ ] Package name `@wednesdayai/<channel>`; id matches directory name
+- [ ] `openclaw` pinned to exactly `2026.3.2`; no `workspace:*` in `dependencies`
+- [ ] `openclaw.plugin.json` present with `id` + `configSchema`
 - [ ] Unit tests pass: `pnpm test:fast`
-- [ ] Docs: `docs/channels/<name>.md` created
-- [ ] `CHANGELOG.md` updated
-- [ ] Dev log at `docs/logs/YYYY-MM-DD-<name>-channel.md`
+- [ ] Channel doc added under `docs/channels/` and indexed
+- [ ] `CHANGELOG.md` updated; dev log at `docs/logs/YYYY-MM-DD-<name>-channel.md`
+
+## What's next
+
+- [Plugin SDK reference](/developers/sdk) — full exported adapter types
+- [Plugin manifest reference](/developers/plugins/manifest)
+- [Write your first plugin](/developers/plugins/your-first-plugin)

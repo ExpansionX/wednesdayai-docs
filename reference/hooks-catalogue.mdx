@@ -11,10 +11,12 @@ WednesdayAI ships four bundled hooks. They are auto-discovered from `dist/hooks/
 
 ```bash
 openclaw hooks list            # show all hooks with enabled/disabled status
-openclaw hooks enable <name>
-openclaw hooks disable <name>
 openclaw hooks info <name>     # requirements, config, current status
 openclaw hooks check           # verify all enabled hooks can load
+openclaw hooks enable <name>
+openclaw hooks disable <name>
+openclaw hooks install <path>  # install a custom hook
+openclaw hooks update <name>   # update an installed hook
 ```
 
 During onboarding (`openclaw onboard`), the wizard prompts you to enable recommended hooks.
@@ -27,8 +29,9 @@ Saves session context to the agent workspace when you issue `/new` or `/reset`. 
 
 | Property | Value |
 | -------- | ----- |
-| **Event** | `command:new` |
-| **Writes to** | `~/.openclaw/workspace/memory/` (default) |
+| **Events** | `command:new`, `command:reset` |
+| **Writes to** | `<workspace>/memory/YYYY-MM-DD-slug.md` |
+| **Requires** | `workspace.dir` |
 | **Emoji** | 💾 |
 
 **Enable:**
@@ -36,18 +39,19 @@ Saves session context to the agent workspace when you issue `/new` or `/reset`. 
 openclaw hooks enable session-memory
 ```
 
-**What it does:** when a session resets, saves a structured summary of the session to the workspace memory directory. On the next session start, the agent can read this file if memory search tools are configured.
+**What it does:** when a session resets, it locates the pre-reset transcript, extracts the last N user/assistant messages (default 15), generates a descriptive slug, writes a structured summary to the workspace memory directory, and confirms the file path. On the next session start the agent can read this file if memory search tools are configured.
 
 ---
 
 ## `bootstrap-extra-files`
 
-Injects additional files from configured glob/path patterns into the agent workspace when it bootstraps. Used to inject custom context files, templates, or system prompts that should always be available to the agent.
+Injects additional files from configured glob/path patterns into the agent workspace during bootstrap. Used to include extra context roots (for example monorepo `AGENTS.md`/`TOOLS.md` files) without changing the workspace root.
 
 | Property | Value |
 | -------- | ----- |
 | **Event** | `agent:bootstrap` |
 | **Reads from** | Configured glob patterns |
+| **Requires** | `workspace.dir` |
 | **Emoji** | 📎 |
 
 **Enable:**
@@ -60,12 +64,11 @@ openclaw hooks enable bootstrap-extra-files
 {
   hooks: {
     internal: {
+      enabled: true,
       entries: {
         "bootstrap-extra-files": {
           enabled: true,
-          config: {
-            patterns: ["~/.openclaw/context/*.md", "~/.openclaw/context/*.txt"],
-          },
+          paths: ["packages/*/AGENTS.md", "packages/*/TOOLS.md"],
         },
       },
     },
@@ -81,7 +84,7 @@ Logs all command events to a local log file. Provides an audit trail of every `/
 
 | Property | Value |
 | -------- | ----- |
-| **Event** | All `command:*` events |
+| **Event** | `command` (all `/new`, `/reset`, `/stop`, ... events) |
 | **Writes to** | `~/.openclaw/logs/commands.log` |
 | **Emoji** | 📝 |
 
@@ -92,21 +95,21 @@ openclaw hooks enable command-logger
 
 **Log format** (JSONL, one entry per line):
 ```json
-{"timestamp":"2026-05-27T12:34:56.789Z","event":"command:new","sessionKey":"agent:main:whatsapp:dm:+15555550123","agentId":"main"}
+{"timestamp":"2026-05-27T12:34:56.789Z","action":"new","sessionKey":"agent:main:main","senderId":"+15555550123","source":"telegram"}
 ```
 
 ---
 
 ## `boot-md`
 
-Runs `BOOT.md` from the agent workspace when the gateway starts. Useful for injecting startup instructions or running an initialization checklist.
+Runs `BOOT.md` from each configured agent's resolved workspace at gateway startup. Useful for injecting startup instructions or running an initialisation checklist.
 
 | Property | Value |
 | -------- | ----- |
-| **Event** | `gateway:start` |
+| **Event** | `gateway:startup` |
 | **Reads from** | `<workspace>/BOOT.md` |
+| **Requires** | `workspace.dir`; internal hooks enabled (`hooks.internal.enabled: true`) |
 | **Emoji** | 🚀 |
-| **Requires** | Internal hooks enabled: `hooks.internal.enabled: true` |
 
 **Enable:**
 ```bash
@@ -119,9 +122,9 @@ openclaw hooks enable boot-md
 
 Hooks are discovered in this order (highest precedence first):
 
-1. `<workspace>/hooks/` — per-agent hooks
-2. `~/.openclaw/hooks/` — user-installed shared hooks
-3. `<openclaw>/dist/hooks/bundled/` — bundled hooks (this catalogue)
+1. `<workspace>/hooks/` - per-agent hooks
+2. `~/.openclaw/hooks/` - user-installed shared hooks
+3. `<openclaw>/dist/hooks/bundled/` - bundled hooks (this catalogue)
 
 A hook in a higher-precedence directory overrides one with the same `name` in a lower-precedence directory.
 
@@ -136,9 +139,10 @@ Dependencies are installed with `npm install --ignore-scripts`. Keep hook depend
 
 ## Writing a hook
 
-See [Hooks](/developers/hooks) for the full hook authoring guide, including the `HookContext` type, all available events, and `HOOK.md` frontmatter format.
+See [Hooks](/developers/hooks) for the full hook authoring guide, including the handler signature, all available events, and `HOOK.md` frontmatter format.
 
 ## Related
 
 - [Hooks (developer guide)](/developers/hooks)
-- [Gateway configuration — hooks section](/reference/config#hooks--incoming-webhooks)
+- [CLI reference - hooks](/reference/cli#openclaw-hooks)
+- [Gateway configuration - hooks section](/reference/config#hooks-incoming-webhooks-and-lifecycle-hooks)

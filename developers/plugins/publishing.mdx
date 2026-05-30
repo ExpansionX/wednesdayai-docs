@@ -1,0 +1,125 @@
+---
+title: "Publishing a plugin"
+description: "Publish a WednesdayAI plugin to npm and understand the managed install lifecycle: install, enable, update, uninstall."
+audience: developer
+---
+
+# Publishing a plugin
+
+A WednesdayAI plugin is an npm package. Once published, operators install it with `openclaw plugins install`, which copies it into the managed extensions directory and tracks it for updates.
+
+## Before you publish
+
+Make sure your package meets the basics:
+
+- `"type": "module"` in `package.json` (the SDK is ESM).
+- An `openclaw.plugin.json` manifest at the package root with `id` + `configSchema`. See the [manifest reference](/developers/plugins/manifest).
+- `openclaw` pinned to exactly `2026.3.2` in `devDependencies` / `peerDependencies` — never in `dependencies`, never a range.
+- No `workspace:*` in `dependencies` (it breaks `npm install --omit=dev`).
+- Plugin id, directory name, and npm package name all match.
+- New WednesdayAI-native plugins publish under the `@wednesdayai/*` scope.
+
+```json
+{
+  "name": "@wednesdayai/my-plugin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": ["dist", "openclaw.plugin.json"],
+  "openclaw": { "id": "my-plugin" },
+  "peerDependencies": { "openclaw": "2026.3.2" },
+  "devDependencies": { "openclaw": "2026.3.2" }
+}
+```
+
+<Warning>
+  Include `openclaw.plugin.json` in your published `files` list. Without the manifest in the
+  tarball, the plugin will fail config validation after install.
+</Warning>
+
+## Publish to npm
+
+```bash
+npm run build      # produce dist/
+npm pack           # inspect the tarball contents first
+npm publish --access public
+```
+
+## The managed install lifecycle
+
+Operators manage your plugin with the `openclaw plugins` commands. Installs are **registry-only** — git, URL, and file specs are rejected for remote installs; local installs use a path.
+
+### Install
+
+```bash
+openclaw plugins install @wednesdayai/my-plugin
+openclaw plugins install @wednesdayai/my-plugin --pin   # save the exact resolved name@version
+openclaw plugins install ./my-plugin-1.0.0.tgz          # local archive
+openclaw plugins install -l ./my-plugin                 # link a local dir (adds to plugins.load.paths)
+```
+
+- Supported archives: `.zip`, `.tgz`, `.tar.gz`, `.tar`.
+- Dependency installs run with `--ignore-scripts` (no lifecycle scripts) for safety.
+- A bare spec that matches a bundled plugin id installs the bundled plugin; use an explicit scoped spec to install a same-named npm package.
+- Managed installs land in `~/.openclaw/extensions/` and are **enabled by default**.
+
+### Enable / disable
+
+```bash
+openclaw plugins enable my-plugin
+openclaw plugins disable my-plugin
+```
+
+Bundled plugins ship **disabled** and must be enabled explicitly. Installed plugins are enabled on install but can be disabled the same way.
+
+### Update
+
+```bash
+openclaw plugins update my-plugin
+openclaw plugins update --all
+openclaw plugins update my-plugin --dry-run
+```
+
+Updates apply only to plugins installed from npm (tracked in `plugins.installs`). When a stored integrity hash exists and the fetched artifact hash changes, WednesdayAI warns and asks for confirmation before proceeding. Use the global `--yes` flag to bypass prompts in CI.
+
+### Inspect
+
+```bash
+openclaw plugins list           # all discovered plugins + status
+openclaw plugins info my-plugin
+openclaw plugins doctor         # manifest/schema/config diagnostics
+```
+
+### Uninstall
+
+```bash
+openclaw plugins uninstall my-plugin
+openclaw plugins uninstall my-plugin --dry-run
+openclaw plugins uninstall my-plugin --keep-files
+```
+
+Uninstall removes the plugin's records from `plugins.entries`, `plugins.installs`, the allowlist, and any linked `plugins.load.paths` entries, and by default removes the install directory under the state-dir extensions root. `--keep-files` leaves files on disk.
+
+## Security expectations
+
+Treat plugin installs like running code. The install path is hardened, but operators are trusting your package:
+
+- Prefer pinned versions (`--pin`).
+- Keep dependencies minimal and free of postinstall build steps (installs use `--ignore-scripts`).
+- Document any native build requirements clearly.
+
+## Getting listed as a community plugin
+
+WednesdayAI maintains a community plugin list. To be listed, a plugin should be:
+
+- Published on npm (installable via `openclaw plugins install <npm-spec>`).
+- Open-source on GitHub with setup docs and an issue tracker.
+- Actively maintained (responsive issues, recent updates).
+
+Submit a PR adding your plugin's name, npm package, repo URL, one-line description, and install command. Low-effort wrappers or unmaintained packages may be declined.
+
+## What's next
+
+- [Plugin manifest reference](/developers/plugins/manifest)
+- [Write your first plugin](/developers/plugins/your-first-plugin)
+- [Contributing](/developers/contributing)

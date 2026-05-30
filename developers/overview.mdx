@@ -1,6 +1,6 @@
 ---
 title: "Developer overview"
-description: "Extend WednesdayAI: plugins, hooks, custom channels, and the plugin SDK."
+description: "Extend WednesdayAI: plugins, hooks, channels, tools, providers, and the plugin SDK."
 audience: developer
 ---
 
@@ -8,35 +8,76 @@ audience: developer
 
 WednesdayAI is built to be extended. The core is intentionally lean; new capabilities belong in plugins, hooks, and channel adapters rather than in core.
 
-This section covers how to build extensions for WednesdayAI.
-
 ## Architecture
 
-```
+```text
 Core gateway (src/)
-├── Plugin SDK (src/plugin-sdk/)  ← stable API surface
-├── Hooks (src/hooks/)            ← event-driven automation
-└── Extensions (extensions/)     ← channel plugins, tool plugins
+├── Plugin SDK (src/plugin-sdk/)  ← stable, importable as `openclaw/plugin-sdk`
+├── Plugins (loaded in-process)   ← tools, channels, providers, hooks, routes
+└── Standalone hooks (HOOK.md)    ← side-effect automation on coarse events
 ```
 
-**Key principle:** everything that can be a plugin, should be. Hooks and plugins interact with the gateway through a stable SDK contract; they do not import from core internals.
+**Key principle:** everything that can be a plugin, should be. Plugins and hooks interact with the gateway through the stable SDK contract; they do not import from core internals.
 
-## Extension types
+## What a plugin can register
+
+A plugin's `register(api)` function can attach any of the following. Each has a dedicated `api.register*` (or `api.on`) method on the `OpenClawPluginApi`:
 
 <CardGroup cols={2}>
-  <Card title="Plugins" href="/developers/plugins/your-first-plugin" icon="puzzle">
-    Add new tools, providers, or capabilities. Published as npm packages under `@wednesdayai/*`.
+  <Card title="Agent tools" href="/developers/agent-tools" icon="wrench">
+    Actions the AI can invoke. `api.registerTool(...)`.
   </Card>
-  <Card title="Hooks" href="/developers/hooks" icon="zap">
-    React to gateway events: session start/reset, commands, lifecycle. Small TypeScript handlers.
+  <Card title="Lifecycle hooks" href="/developers/hooks" icon="zap">
+    Typed runtime callbacks — transform LLM input/output, gate tools, shape context. `api.on(...)`.
   </Card>
   <Card title="Channel adapters" href="/developers/channel-adapters" icon="plug">
-    Connect a new messaging platform as a first-class channel.
+    A new messaging platform. `api.registerChannel(...)`.
   </Card>
-  <Card title="Plugin SDK" href="/developers/sdk" icon="layers">
-    The stable API surface for plugins. Types, interfaces, and contracts.
+  <Card title="Providers" href="/developers/providers" icon="server">
+    Model providers and their auth methods. `api.registerProvider(...)`.
+  </Card>
+  <Card title="HTTP routes + gateway methods" href="/developers/sdk" icon="globe">
+    Custom endpoints and RPC methods. `api.registerHttpRoute(...)` / `api.registerGatewayMethod(...)`.
+  </Card>
+  <Card title="Commands" href="/developers/sdk" icon="terminal">
+    Chat commands that bypass the LLM, and CLI commands. `api.registerCommand(...)` / `api.registerCli(...)`.
+  </Card>
+  <Card title="Services" href="/developers/sdk" icon="gear">
+    Start/stop background services. `api.registerService(...)`.
+  </Card>
+  <Card title="Storage + search providers" href="/developers/sdk" icon="database">
+    Session store backends and web-search providers. `api.registerSessionStoreAdapter(...)` / `api.registerWebSearchProvider(...)`.
   </Card>
 </CardGroup>
+
+Standalone [HOOK.md hooks](/developers/hooks#standalone-hooks-hookmd) are a separate, simpler system for side-effect automation on coarse events (`/new`, `/reset`, gateway start).
+
+## `api.runtime`
+
+Plugins reach vetted runtime capabilities through `api.runtime` instead of importing core internals. Highlights:
+
+- `runtime.analysis` — focused plugin-owned LLM analysis ([guide](/developers/analysis-runtime))
+- `runtime.signals` — Agent Signals for non-user stimuli ([guide](/developers/agent-signals))
+- `runtime.state.resolveStateDir()` — resolve the plugin state directory
+- `runtime.config`, `runtime.media`, `runtime.tts` / `runtime.stt`, `runtime.system`, `runtime.events`, `runtime.logging`
+
+See the [Plugin SDK reference](/developers/sdk) for the full surface.
+
+## Plugin discovery and precedence
+
+The gateway scans for plugins in this order, and the **first match for a given id wins** (lower-precedence copies are ignored):
+
+1. **Config paths** — `plugins.load.paths` (file or directory)
+2. **Workspace extensions** — `<workspace>/.openclaw/extensions/`
+3. **Global extensions** — `~/.openclaw/extensions/` (where managed installs live)
+4. **Bundled extensions** — shipped with WednesdayAI, **disabled by default**
+
+Bundled plugins must be enabled explicitly (`openclaw plugins enable <id>`). Plugins installed via `openclaw plugins install` land in the global extensions directory and are enabled by default.
+
+<Warning>
+  Never add the bundled extension path to `plugins.load.paths`. The bundled copy has no
+  runtime dependencies installed; only the managed copy under `~/.openclaw/extensions/` does.
+</Warning>
 
 ## Tech stack
 
@@ -46,14 +87,11 @@ Core gateway (src/)
 | Runtime | Node.js 22+ |
 | Package manager | pnpm 10.23 |
 | Build | tsdown + post-build tsx scripts |
+| Type checker | `pnpm tsgo` (native TS checker) |
 | Tests | Vitest v4 + V8 coverage |
 | Linter | Oxlint v1.50 |
 
-Full tech stack: [CLAUDE.md §2](https://github.com/ExpansionX/WednesdayAI-core/blob/main/AGENTS.md).
-
 ## Plugin scopes
-
-WednesdayAI uses two npm scopes:
 
 - **`@wednesdayai/*`** — new extensions built for this fork. Use this for anything new.
 - **`@openclaw/*`** — inherited extensions from the fork base. Publish only if the package already exists under this scope on npm.
@@ -75,18 +113,19 @@ WednesdayAI uses two npm scopes:
     pnpm test         # full suite
     ```
   </Step>
-  <Step title="Read the plugin guide">
-    Start with [Your first plugin](/developers/plugins/your-first-plugin) for a worked example, or [Hooks](/developers/hooks) for simpler event-driven automation.
+  <Step title="Build your first plugin">
+    Follow [Your first plugin](/developers/plugins/your-first-plugin) for a worked example.
   </Step>
 </Steps>
 
 ## Design principles
 
-1. **Lean core** — if a capability can live in a plugin, it should. Don't add to core.
-2. **Stable contracts** — plugins import from `openclaw/plugin-sdk`, never from core internals.
-3. **No `workspace:*` in `dependencies`** — `npm install --omit=dev` in plugin dirs must work.
-4. **Naming** — user-facing text uses `WednesdayAI`; code, config keys, and imports use `openclaw`.
-5. **No `any` in SDK exports** — the plugin SDK surface must be fully typed.
+1. **Lean core** — if a capability can live in a plugin, it should.
+2. **Stable contracts** — plugins import from `openclaw/plugin-sdk`, never core internals.
+3. **Pin to the fork base** — plugins pin `openclaw` to exactly `2026.3.2`.
+4. **No `workspace:*` in `dependencies`** — `npm install --omit=dev` in plugin dirs must work.
+5. **Naming** — user-facing text uses `WednesdayAI`; code, config keys, and imports use `openclaw`.
+6. **No `any` in SDK exports** — the plugin SDK surface must be fully typed.
 
 ## Contributing
 

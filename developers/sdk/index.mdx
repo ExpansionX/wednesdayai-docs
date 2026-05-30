@@ -1,21 +1,22 @@
 ---
 title: "Plugin SDK"
-description: "The stable API surface for WednesdayAI plugins: types, contracts, and how to extend the gateway."
+description: "The stable API surface for WednesdayAI plugins: the register entry, api.register* methods, api.runtime sub-APIs, and typed exports."
 audience: developer
 ---
 
 # Plugin SDK
 
-The plugin SDK is the stable API surface for WednesdayAI extensions. Plugins import from `openclaw/plugin-sdk` — never from core internals.
+The plugin SDK is the stable API surface for WednesdayAI extensions. Plugins import from `openclaw/plugin-sdk` — never from core internals or relative paths into `src/`.
 
 ## Installation
 
-The SDK is available as a peer dependency. Add it to your plugin's `devDependencies` or `peerDependencies`:
+Add `openclaw` as a dev/peer dependency, **pinned to exactly `2026.3.2`** (the fork base):
 
 ```json
 {
+  "type": "module",
   "peerDependencies": {
-    "openclaw": ">=2026.3.2"
+    "openclaw": "2026.3.2"
   },
   "devDependencies": {
     "openclaw": "2026.3.2"
@@ -23,72 +24,72 @@ The SDK is available as a peer dependency. Add it to your plugin's `devDependenc
 }
 ```
 
-Never add `openclaw` to `dependencies` — it must be the version installed by the gateway, not a separate copy.
+Never add `openclaw` to `dependencies` — the gateway provides it at runtime. Do not use a range such as `>=2026.3.2`: a plugin built against a newer openclaw may import symbols that do not exist or have changed semantics in this fork.
 
-## Importing from the SDK
+## The plugin entry
 
-```typescript
-import type { ChannelPlugin, ToolDefinition, HookContext } from "openclaw/plugin-sdk";
-```
+A plugin module exports a default `register` function (sync or async) that receives the `OpenClawPluginApi`:
 
-Do not import from `openclaw/src/...` or relative paths into core. Those are internal APIs that can change without notice.
+```ts
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
-## Core types
-
-### `ChannelPlugin<TAccount>`
-
-The contract for channel adapter plugins:
-
-```typescript
-import type { ChannelPlugin } from "openclaw/plugin-sdk";
-
-const myChannel: ChannelPlugin<MyAccount> = {
-  id: "my-channel",
-  name: "My Channel",
-  // ... implement required adapter interfaces
-};
-
-export default myChannel;
-```
-
-### `ToolDefinition`
-
-Define a tool the agent can call:
-
-```typescript
-import { Type } from "@sinclair/typebox";
-import type { ToolDefinition } from "openclaw/plugin-sdk";
-
-export const searchTool: ToolDefinition = {
-  name: "my_search",
-  description: "Search for something.",
-  inputSchema: Type.Object({
-    query: Type.String({ description: "The search query." }),
-    limit: Type.Optional(Type.Number({ description: "Max results." })),
-  }),
-  async run({ query, limit = 5 }) {
-    // ... implementation
-    return { results: [] };
-  },
-};
-```
-
-### `HookContext`
-
-Passed to hook handlers:
-
-```typescript
-import type { HookContext } from "openclaw/plugin-sdk";
-
-export async function handler(ctx: HookContext): Promise<void> {
-  const { event, session, agent, gateway } = ctx;
-  // ...
+export default function register(api: OpenClawPluginApi): void {
+  // register tools, hooks, channels, routes, etc.
 }
 ```
 
-## Schema rules
+A plugin may instead export an `OpenClawPluginDefinition` object with a `register` (or `activate`) method and optional `id` / `name` / `configSchema` / `ownsCompaction` fields. Both forms are accepted.
 
-WednesdayAI uses `@sinclair/typebox` for tool input schemas. Pin to exact version `0.34.48`:
+## The `api` object
+
+`OpenClawPluginApi` is what your `register` function receives. Key fields and methods:
+
+| Member | Purpose |
+| ------ | ------- |
+| `api.id`, `api.name`, `api.version` | Plugin identity |
+| `api.config` | The resolved `OpenClawConfig` |
+| `api.pluginConfig` | This plugin's config (`Record<string, unknown> \| undefined`) |
+| `api.logger` | `PluginLogger` (`info` / `warn` / `error` / `debug?`) |
+| `api.runtime` | Runtime sub-APIs (see below) |
+| `api.registerTool(tool, opts?)` | Register an agent tool ([guide](/developers/agent-tools)) |
+| `api.on(name, handler, opts?)` | Register a lifecycle hook ([guide](/developers/hooks)) |
+| `api.registerHook(events, handler, opts?)` | Lower-level hook registration |
+| `api.registerChannel(reg)` | Register a channel ([guide](/developers/channel-adapters)) |
+| `api.registerHttpRoute(params)` | Register a gateway HTTP route |
+| `api.registerGatewayMethod(method, handler)` | Register a gateway RPC method |
+| `api.registerCli(registrar, opts?)` | Add CLI commands |
+| `api.registerCommand(command)` | Register a chat command that bypasses the LLM |
+| `api.registerService(service)` | Register a start/stop background service |
+| `api.registerProvider(provider)` | Register a model provider |
+| `api.registerSessionStoreAdapter(adapter)` | Register a session store backend |
+| `api.registerWebSearchProvider(provider)` | Register a web-search provider |
+| `api.resolvePath(input)` | Resolve a path relative to the plugin |
+
+## `api.runtime` sub-APIs
+
+`api.runtime` exposes vetted runtime capabilities so plugins never reach into core internals:
+
+| Sub-API | What it offers |
+| ------- | -------------- |
+| `runtime.analysis` | Focused plugin-owned LLM analysis — `run(...)` and `enqueue(...)`. See [Analysis runtime](/developers/analysis-runtime). |
+| `runtime.signals` | Agent Signals — `publish`, `subscribe`, `getAvailability`, `requestWake`. See [Agent signals](/developers/agent-signals). |
+| `runtime.state` | `resolveStateDir()` — resolve the plugin/agent state directory |
+| `runtime.config` | `loadConfig`, `writeConfigFile` |
+| `runtime.media` | `loadWebMedia`, `detectMime`, `getImageMetadata`, `resizeToJpeg`, and more |
+| `runtime.tts` / `runtime.stt` | Text-to-speech and transcription helpers |
+| `runtime.system` | `enqueueSystemEvent`, `requestHeartbeatNow`, `runCommandWithTimeout` |
+| `runtime.events` | `onAgentEvent`, `onSessionTranscriptUpdate` |
+| `runtime.tools` | Built-in memory tool factories and CLI registration |
+| `runtime.logging` | `getChildLogger`, `shouldLogVerbose` |
+
+<Warning>
+  `resolveStateDir` is **no longer exported** as a top-level SDK symbol. Resolve the state
+  directory via `api.runtime.state.resolveStateDir()` instead.
+</Warning>
+
+## Tool parameter schemas (typebox)
+
+Tool `parameters` use `@sinclair/typebox`. Pin it to exactly `0.34.48`:
 
 ```json
 {
@@ -100,45 +101,61 @@ WednesdayAI uses `@sinclair/typebox` for tool input schemas. Pin to exact versio
 
 Schema constraints:
 
-- No `Type.Union`, `anyOf`, `oneOf`, or `allOf` in tool input schemas
-- Use `Type.Optional(...)` instead of `... | null`
-- Use `stringEnum` / `optionalStringEnum` (Type.Unsafe) for string enumerations
-- No `any` in SDK exports — all exported types must be fully typed
+- No `Type.Union`, `anyOf`, `oneOf`, or `allOf`.
+- Use `Type.Optional(...)` instead of `... | null`.
+- Use `stringEnum` / `optionalStringEnum` (exported from the SDK) for string enumerations.
+- Never use `format` as a raw property name.
 
-## Plugin manifest
+```ts
+import { Type } from "@sinclair/typebox";
+import { stringEnum, optionalStringEnum } from "openclaw/plugin-sdk";
 
-Each plugin package must have an `"openclaw"` key in `package.json`:
-
-```json
-{
-  "name": "@wednesdayai/my-plugin",
-  "version": "1.0.0",
-  "openclaw": {
-    "id": "my-plugin",
-    "displayName": "My Plugin",
-    "description": "Does something useful.",
-    "configSchema": {
-      "type": "object",
-      "properties": {
-        "apiKey": { "type": "string", "description": "API key for the service." }
-      }
-    }
-  }
-}
+const parameters = Type.Object({
+  mode: stringEnum(["fast", "thorough"]),
+  region: optionalStringEnum(["us", "eu"]),
+});
 ```
 
-## Runtime and dependencies
+## Commonly used exports
 
-- **No `workspace:*` in `dependencies`** — your plugin must install cleanly with `npm install --omit=dev`.
-- Runtime deps go in `dependencies`; everything else in `devDependencies` or `peerDependencies`.
-- Extensions under `extensions/` in the repo are workspace packages with their own `package.json`. They are excluded from the root Oxlint config — manage your own linting.
+These are exported from `openclaw/plugin-sdk` and are safe to depend on:
+
+- **Types** — `OpenClawPluginApi`, `OpenClawPluginDefinition`, `AnyAgentTool`, `ChannelPlugin` (and the `Channel*Adapter` family), `PluginRuntime`, `OpenClawConfig`, the `Analysis*` types, the `AgentSignal*` types.
+- **Tool helpers** — `jsonResult`, `readStringParam`, `readNumberParam`, `readReactionParams`, `createActionGate`, `ToolAuthorizationError`.
+- **Schema helpers** — `stringEnum`, `optionalStringEnum`.
+- **Logging** — `createSubsystemLogger`, `getChildLogger`.
+- **Config/secrets** — `loadConfig`, `isSecretRef`, `SecretInput` / `SecretRef` types.
+- **HTTP/webhooks** — `registerPluginHttpRoute`, `registerWebhookTarget`, request-guard helpers.
+
+<Note>
+  `ToolDefinition`, `inputSchema`, `run()`, `HookContext`, and `PluginDefinition.tools[]`
+  do **not** exist in this SDK. Tools are `AnyAgentTool` objects with `parameters` and
+  `execute(_id, params)`, registered via `api.registerTool(...)`. Hooks are registered via
+  `api.on(...)`.
+</Note>
+
+## Manifest vs package.json key
+
+Two related-but-distinct things both use the word "openclaw":
+
+- **`openclaw.plugin.json`** — the manifest at the plugin root. Carries `id` and `configSchema` and is used to validate config **without executing plugin code**. Required for every plugin. See the [manifest reference](/developers/plugins/manifest).
+- **`package.json` `"openclaw"` key** — used for workspace/pack discovery (for example the `id`, or `extensions` for a multi-plugin pack).
+
+A typical published plugin ships both: the `package.json` `"openclaw"` key for discovery, and `openclaw.plugin.json` for config validation.
 
 ## Extending the SDK surface
 
-When you need a type or contract that is not yet exported from `plugin-sdk`:
+When you need a type or contract that is not yet exported:
 
-1. Do not import it from core internals — that creates a hard coupling.
-2. Open an issue or PR to add it to `src/plugin-sdk/` with proper documentation.
-3. Keep exports typed and documented. No `any`.
+1. Do not import it from core internals — that creates a hard coupling that breaks on upgrade.
+2. Open an issue or PR to add it to `src/plugin-sdk/` with documentation.
+3. Keep exports typed. No `any` in the SDK surface.
 
-See [Contributing](/developers/contributing) for the PR workflow.
+See [Contributing](/developers/contributing) for the workflow.
+
+## What's next
+
+- [Agent tools](/developers/agent-tools)
+- [Hooks](/developers/hooks)
+- [Channel adapters](/developers/channel-adapters)
+- [Analysis runtime](/developers/analysis-runtime) and [Agent signals](/developers/agent-signals)

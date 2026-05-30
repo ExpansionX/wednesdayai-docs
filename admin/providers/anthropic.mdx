@@ -1,0 +1,161 @@
+---
+title: "Anthropic"
+description: "Connect WednesdayAI to Claude — API key, OAuth token, or setup-token — plus thinking, prompt caching, and the 1M context window."
+audience: admin
+---
+
+# Anthropic
+
+WednesdayAI uses Anthropic's Claude models for its default AI. There are three ways to authenticate, and several Claude-specific options: thinking, prompt caching, and the 1M context window.
+
+## Authentication
+
+### Option A — API key (recommended)
+
+Create a key in the Anthropic Console, then onboard:
+
+```bash
+openclaw onboard
+# choose: Anthropic API key
+
+# or non-interactive:
+openclaw onboard --anthropic-api-key "$ANTHROPIC_API_KEY"
+```
+
+Or set the key on the gateway host so the daemon can read it:
+
+```bash
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.openclaw/.env
+```
+
+### Option B — OAuth token env var
+
+For scripted or containerised setups where you already hold an Anthropic OAuth token (`sk-ant-oat-...`):
+
+```bash
+export ANTHROPIC_OAUTH_TOKEN="sk-ant-oat-..."
+```
+
+`ANTHROPIC_OAUTH_TOKEN` is checked **before** `ANTHROPIC_API_KEY` — if both are set, the OAuth token wins. It bypasses the auth-profile store; `openclaw models status` shows it as **OAuth (env)**.
+
+### Option C — Claude setup-token (subscription)
+
+Setup-tokens are created by the Claude Code CLI on any machine:
+
+```bash
+claude setup-token
+```
+
+Paste it on the gateway host:
+
+```bash
+openclaw models auth paste-token --provider anthropic
+```
+
+<Warning>
+Anthropic has restricted subscription credential use outside Claude Code in the past. Setup-token support is technical compatibility only — verify Anthropic's current terms before relying on it. **API key auth is the safer, recommended path.**
+</Warning>
+
+## Selecting a model
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-opus-4-6" },
+    },
+  },
+}
+```
+
+Common Claude model references:
+
+| Model | Reference |
+| ----- | --------- |
+| Claude Sonnet 4.6 | `anthropic/claude-sonnet-4-6` |
+| Claude Opus 4.7 | `anthropic/claude-opus-4-7` |
+| Claude Opus 4.6 | `anthropic/claude-opus-4-6` |
+| Claude Haiku 4.5 | `anthropic/claude-haiku-4-5-20251001` |
+
+## Thinking
+
+Claude 4.6 models default to **adaptive** thinking when no explicit level is set. Override per message with `/think:<level>`, or pin it in model params:
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-opus-4-6": {
+          params: { thinking: "high" },
+        },
+      },
+    },
+  },
+}
+```
+
+## Prompt caching
+
+Prompt caching reuses the cache for repeated system-prompt prefixes, cutting cost and latency. It is **API-only** — subscription/OAuth auth does not honour cache settings. With an API key, WednesdayAI applies `cacheRetention: "short"` automatically; override it via model params:
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-opus-4-6": {
+          params: { cacheRetention: "long" },
+        },
+      },
+    },
+  },
+}
+```
+
+| Value | Cache TTL | Notes |
+| ----- | --------- | ----- |
+| `none` | No caching | |
+| `short` | 5 minutes | Default for API-key auth |
+| `long` | 1 hour | Extended cache |
+
+You can set a model-level baseline and override per agent via `agents.list[].params` — for example one agent on `long` and a bursty alerts agent on `none` to avoid cache-write costs.
+
+## 1M context window (beta)
+
+Anthropic's 1M context window is beta-gated. Enable it per model with `params.context1m: true` for supported Opus/Sonnet models:
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "anthropic/claude-opus-4-6": {
+          params: { context1m: true },
+        },
+      },
+    },
+  },
+}
+```
+
+<Note>
+The 1M context requires Anthropic to allow long-context usage on that credential (typically API-key billing). Anthropic rejects the `context-1m` beta on OAuth/subscription tokens, so WednesdayAI skips the beta header for OAuth auth automatically.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 / token suddenly invalid">
+    Subscription auth can expire or be revoked. Re-run `claude setup-token` and paste it on the gateway host with `openclaw models auth paste-token --provider anthropic`. For long-lived deployments, switch to an API key.
+  </Accordion>
+  <Accordion title='"This credential is only authorized for use with Claude Code"'>
+    Anthropic blocked the subscription credential for non-Claude-Code use. Use an API key instead.
+  </Accordion>
+  <Accordion title='"No API key found for provider anthropic"'>
+    Auth is per agent — new agents do not inherit the main agent's keys. Re-run onboarding for that agent, or paste a token/key on the gateway host, then verify with `openclaw models status`.
+  </Accordion>
+  <Accordion title="No available auth profile (all in cooldown)">
+    Check `openclaw models status --json` for `auth.unusableProfiles`. Add another Anthropic profile or wait for the cooldown to clear.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,134 @@
+---
+title: "Agent signals"
+description: "Publish structured non-user stimuli into WednesdayAI via api.runtime.signals: context hints and heartbeat wakes."
+audience: developer
+---
+
+# Agent signals
+
+Agent Signals are WednesdayAI's lean plugin surface for **non-user stimuli**. They let a plugin publish structured meta-input — watcher output, commitment reminders, inbox summaries, context hints, background findings — without pretending the input came from a human conversation.
+
+Keep domain behaviour in your plugin. Core only owns flow control, dedupe, admission, and heartbeat dispatch.
+
+## Modes
+
+The current implementation supports two modes:
+
+- `context` — stores the signal for plugin subscribers and future context collection. It does **not** wake a model turn.
+- `heartbeat` — stores the signal, queues a session-scoped system-event summary, and requests a targeted heartbeat wake.
+
+The `background`, `notify`, and `steer` modes are reserved for future plumbing and currently return `unsupported-mode`.
+
+## Publishing a signal
+
+Plugins access the API through `api.runtime.signals`. `publish()` is synchronous and never calls the model directly:
+
+```ts
+const result = api.runtime.signals.publish({
+  type: "commitment.due",
+  source: "my-plugin",
+  sessionKey: "agent:main:telegram:direct:user-id",
+  mode: "heartbeat",
+  summary: "Review the follow-up promised to the operations team.",
+  dedupeKey: "commitment:ops-follow-up:2026-05-26",
+  ttlMs: 30 * 60 * 1000,
+  payload: { commitmentId: "ops-follow-up" },
+});
+
+if (!result.accepted && result.reason !== "duplicate") {
+  api.logger.warn("signal was not accepted", { reason: result.reason });
+}
+```
+
+`publish()` returns either `{ accepted: true, signalId }` or `{ accepted: false, reason }`, where `reason` is one of `duplicate`, `expired`, `queue-full`, `invalid`, or `unsupported-mode`.
+
+### Signal fields
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `type` | `string` | Required. Signal type, e.g. `commitment.due`. |
+| `source` | `string` | Required. Your plugin id. |
+| `payload` | `unknown` | Required. Structured data (kept out of transcripts by default). |
+| `mode` | `"context" \| "heartbeat"` | Dispatch mode. |
+| `summary` | `string` | Concise prompt-visible summary (max ~500 chars). |
+| `sessionKey` / `agentId` | `string` | Target session/agent. |
+| `priority` | `"low" \| "normal" \| "high" \| "urgent"` | Eviction ranking. |
+| `dedupeKey` | `string` | Suppresses duplicates against the same target. |
+| `ttlMs` | `number` | Expiry for stale alerts. |
+| `requiresIdle` | `boolean` | Defer dispatch while the agent is busy. |
+
+## Available helpers
+
+```ts
+api.runtime.signals.publish(signal);
+api.runtime.signals.subscribe(filter, handler);
+api.runtime.signals.getAvailability({ agentId, sessionKey });
+api.runtime.signals.requestWake({ signalId });
+```
+
+## Heartbeat dispatch
+
+Heartbeat-mode signals bridge into the existing heartbeat system:
+
+1. The signal is accepted into a bounded in-memory store.
+2. Core enqueues a system event on the target `sessionKey`.
+3. Core requests `requestHeartbeatNow({ reason: "signal:<type>", sessionKey })`.
+4. The heartbeat runner decides whether to run, skip, or retry based on active hours, heartbeat config, and lane/session activity.
+5. When the heartbeat runs, the signal summary is framed as signal-event context so isolated heartbeat sessions still see the base-session content.
+
+Signal dispatch does not bypass heartbeat isolation or `skipWhenBusy`.
+
+## Prompt visibility
+
+Signals are meta-input, not user messages. Core exposes only the summary to the prompt-visible system-event queue:
+
+```text
+Signal (my-plugin/commitment.due): Review the follow-up promised to the operations team.
+```
+
+Raw signal payloads are not written into normal transcripts by default, and should not be treated as user-authored memory unless your plugin explicitly opts in through its own hooks.
+
+## Availability
+
+Use `getAvailability()` to decide whether to publish now, defer, or drop:
+
+```ts
+const availability = api.runtime.signals.getAvailability({ sessionKey });
+
+if (!availability.canWakeHeartbeat) {
+  api.logger.debug("deferring signal until the agent is less busy", {
+    mainBusy: availability.mainBusy,
+    sessionBusy: availability.sessionBusy,
+    cronBusy: availability.cronBusy,
+    subagentBusy: availability.subagentBusy,
+    nestedBusy: availability.nestedBusy,
+  });
+}
+```
+
+Availability is advisory — the heartbeat runner remains the final admission gate. A signal with `requiresIdle: true` is held while availability reports busy; re-attempt with `requestWake()` later.
+
+## Dedupe and bounds
+
+The in-memory store applies conservative limits:
+
+- 100 signals globally; 20 per target session, agent, or source.
+- Duplicate suppression by `dedupeKey`, scoped to the target session/agent/source (the same `dedupeKey` against two different targets does not collide). When `dedupeKey` is omitted, suppression is by `source:type:agentId:sessionKey`.
+- When a bounded target or the global store is full, the lowest-priority oldest signal is evicted; the incoming signal is rejected with `queue-full` if every eviction candidate has strictly higher priority.
+
+Signals are **ephemeral** — not a durable queue. Plugins that need guaranteed delivery should keep their own durable state and republish a concise signal when the runtime is available.
+
+## Recommended pattern
+
+Use Agent Signals as plumbing, not product policy:
+
+- Put domain logic in the plugin; publish concise summaries.
+- Use `context` mode for passive context; `heartbeat` mode when the agent should consider acting soon.
+- Add `dedupeKey` for recurring or retried stimuli, and `ttlMs` for stale alerts.
+- Avoid including secrets or large payloads.
+
+## What's next
+
+- [Analysis runtime](/developers/analysis-runtime)
+- [Hooks](/developers/hooks)
+- [Plugin SDK reference](/developers/sdk)

@@ -1,6 +1,6 @@
 ---
 title: "Authentication"
-description: "Connect AI providers to WednesdayAI: API keys, OAuth tokens, key rotation, and trusted-proxy auth."
+description: "Connect AI providers to WednesdayAI: API keys, OAuth tokens, key rotation, gateway-token rotation, and trusted-proxy auth."
 audience: admin
 ---
 
@@ -8,72 +8,69 @@ audience: admin
 
 WednesdayAI supports API keys and OAuth tokens for AI providers, plus delegated authentication through a trusted reverse proxy for multi-user deployments.
 
+This page covers **provider** authentication and the **gateway access token**. For per-provider details, see the [provider guides](/admin/providers).
+
 ## Quick start — API key
 
 For a long-lived gateway, an API key is the most reliable option. OAuth/subscription tokens can expire and require interactive renewal; API keys do not.
 
-1. **Create a key** in your provider console (Anthropic, OpenAI, Google, etc.)
+<Steps>
+  <Step title="Create a key">
+    Generate a key in your provider console (Anthropic, OpenAI, Google, etc.).
+  </Step>
+  <Step title="Persist it for the daemon">
+    Put the key in `~/.openclaw/.env` so the gateway service reads it at startup — shell environment is not inherited by systemd/launchd services:
 
-2. **Add it to the gateway host:**
-
-   ```bash
-   # For immediate use in your current shell:
-   export ANTHROPIC_API_KEY="sk-ant-..."
-   openclaw models status
-   ```
-
-3. **Persist it for the daemon** — put the key in `~/.openclaw/.env` so the gateway service can read it at startup:
-
-   ```bash
-   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.openclaw/.env
-   ```
-
-   Then restart the gateway:
-
-   <Tabs>
-     <Tab title="Linux (systemd)">
-       ```bash
-       systemctl --user restart openclaw-gateway
-       ```
-     </Tab>
-     <Tab title="macOS / manual">
-       ```bash
-       openclaw gateway stop && openclaw gateway start
-       ```
-     </Tab>
-   </Tabs>
-
-4. **Verify:**
-
-   ```bash
-   openclaw models status
-   openclaw doctor
-   ```
+    ```bash
+    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.openclaw/.env
+    ```
+  </Step>
+  <Step title="Restart the gateway">
+    <Tabs>
+      <Tab title="Linux (systemd)">
+        ```bash
+        systemctl --user restart openclaw-gateway
+        ```
+      </Tab>
+      <Tab title="macOS / manual">
+        ```bash
+        openclaw gateway stop && openclaw gateway start
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+  <Step title="Verify">
+    ```bash
+    openclaw models status
+    openclaw doctor
+    ```
+  </Step>
+</Steps>
 
 ## Supported providers
 
 <CardGroup cols={3}>
-  <Card title="Anthropic (Claude)" href="/developers/providers/anthropic" icon="message-square">
-    API key or subscription setup-token
+  <Card title="Anthropic (Claude)" href="/admin/providers/anthropic" icon="message-square">
+    API key, OAuth token, or setup-token
   </Card>
-  <Card title="OpenAI / GPT" href="/developers/providers/openai" icon="zap">
+  <Card title="OpenAI" href="/admin/providers/openai" icon="zap">
+    API key or Codex OAuth
+  </Card>
+  <Card title="Google (Gemini)" href="/admin/providers/google" icon="globe">
+    AI Studio key or Vertex AI
+  </Card>
+  <Card title="Ollama (local)" href="/admin/providers/ollama" icon="server">
+    No auth — runs locally
+  </Card>
+  <Card title="OpenRouter" href="/admin/providers/openrouter" icon="shuffle">
     API key
   </Card>
-  <Card title="Google (Gemini)" href="/developers/providers/google" icon="globe">
-    API key or OAuth via `GOOGLE_API_KEY`
-  </Card>
-  <Card title="Ollama (local)" href="/developers/providers/ollama" icon="server">
-    No auth — runs on localhost
-  </Card>
-  <Card title="OpenRouter" href="/developers/providers/openrouter" icon="shuffle">
-    API key
-  </Card>
-  <Card title="LiteLLM / Bifrost" href="/developers/providers/litellm" icon="layers">
+  <Card title="LiteLLM / Bifrost" href="/admin/providers/litellm" icon="layers">
     Proxy key
   </Card>
 </CardGroup>
 
-Full provider list: [`docs/providers/`](/developers/providers).
+The full list of built-in providers is larger — see [AI providers](/admin/providers).
 
 ## Environment variable lookup order
 
@@ -82,19 +79,15 @@ WednesdayAI resolves provider credentials in this order (first match wins):
 | Priority | Variable | Notes |
 | -------- | -------- | ----- |
 | 1 | `OPENCLAW_LIVE_<PROVIDER>_KEY` | Single override, useful in CI |
-| 2 | `<PROVIDER>_API_KEYS` | Comma-separated list for rotation |
+| 2 | `<PROVIDER>_API_KEYS` | Comma- or semicolon-separated list for rotation |
 | 3 | `<PROVIDER>_API_KEY` | Standard single key |
 | 4 | `<PROVIDER>_API_KEY_*` | Numbered variants (`_KEY_1`, `_KEY_2`, …) |
 
-Replace `<PROVIDER>` with the uppercase provider name: `ANTHROPIC`, `OPENAI`, `GOOGLE`, `OPENROUTER`, etc. Google providers also fall back to the bare `GOOGLE_API_KEY`.
-
-The gateway deduplicates entries before use.
+Replace `<PROVIDER>` with the uppercase provider name: `ANTHROPIC`, `OPENAI`, `OPENROUTER`, etc. Google/Gemini providers also fall back to the bare `GOOGLE_API_KEY`. The gateway deduplicates entries before use.
 
 ## Key rotation
 
-When a provider returns a rate-limit error (HTTP 429 or `rate_limit`/`quota`/`resource exhausted` in the error body), the gateway automatically retries with the next key from the rotation list. Non-rate-limit errors are not retried with alternate keys.
-
-To rotate across multiple keys, populate `<PROVIDER>_API_KEYS`:
+When a provider returns a rate-limit error (HTTP 429 or `rate_limit`/`quota`/`resource exhausted` in the body), the gateway retries with the next key in the rotation list. Non-rate-limit errors are not retried with alternate keys.
 
 ```bash
 # ~/.openclaw/.env
@@ -103,145 +96,114 @@ ANTHROPIC_API_KEYS=sk-ant-key1...,sk-ant-key2...,sk-ant-key3...
 
 ## Anthropic subscription (setup-token)
 
-If you have a Claude subscription rather than an API key, the setup-token flow is supported. Run this on the **gateway host** (requires an interactive TTY):
+If you have a Claude subscription rather than an API key, the setup-token flow is supported. Generate the token on any machine, then paste it on the **gateway host**:
 
 ```bash
 claude setup-token
 openclaw models auth paste-token --provider anthropic
 ```
 
-If the token was generated on a different machine, copy it and paste it directly:
-
-```bash
-openclaw models auth paste-token --provider anthropic
-```
-
 <Warning>
-Anthropic has restricted subscription credential use outside Claude Code in the past. This is technical compatibility only — verify Anthropic's current terms before relying on it for production workloads. API key auth is the safe path.
+Anthropic has restricted subscription credential use outside Claude Code in the past. This is technical compatibility only — verify Anthropic's current terms before relying on it. API key auth is the safe path. See [Anthropic](/admin/providers/anthropic).
 </Warning>
 
 ## Auth profiles
 
 Auth profiles let you maintain multiple sets of credentials for the same provider and switch between them per-session or per-agent.
 
-**Check current profiles:**
-
 ```bash
-openclaw models status
-```
-
-**Set the auth order for an agent:**
-
-```bash
+openclaw models status                                            # current profiles and which is active
 openclaw models auth order get --provider anthropic
 openclaw models auth order set --provider anthropic anthropic:default
 openclaw models auth order clear --provider anthropic
 ```
 
-Use `--agent <id>` to target a specific agent; omit it for the default agent.
-
-**Per-session override** (in a running chat session):
+Use `--agent <id>` to target a specific agent. Per-session override in a running chat:
 
 ```
-/model <alias>@<profileId>
+/model <model>@<profileId>
 ```
 
-Example: `/model claude-3-5-sonnet@anthropic:work`
+Example: `/model anthropic/claude-sonnet-4-6@anthropic:work`
+
+## Gateway access token
+
+Provider credentials are separate from the **gateway access token**, which authenticates callers to the gateway API and control panel. It is configured under `gateway.auth` (not the top-level `auth` key, which is the provider credential store). See [Gateway configuration](/admin/gateway/configuration#gatewayauth) for the full resolution order.
+
+### Rotating the gateway token
+
+<Steps>
+  <Step title="Generate a new token">
+    ```bash
+    openssl rand -hex 32
+    ```
+  </Step>
+  <Step title="Update config (and env if used)">
+    Set `gateway.auth.token` in `~/.openclaw/openclaw.json`. If `OPENCLAW_GATEWAY_TOKEN` is also set (for example in a systemd `EnvironmentFile`), update or remove it too — the env var takes precedence and will block the config change otherwise.
+  </Step>
+  <Step title="Restart and re-pair clients">
+    In `hybrid` reload mode, saving the config restarts the gateway automatically and drops active sessions. Update the token in any CLI/app clients (and `gateway.remote.token` if you persist a remote target).
+  </Step>
+</Steps>
 
 ## Automated auth monitoring
 
-To detect expiring tokens and alert via the gateway (useful in unattended deployments):
+To detect expiring tokens in unattended deployments:
 
 ```bash
 openclaw models status --check
 # Exit codes: 0 = OK, 1 = expired/missing, 2 = expiring soon
 ```
 
-Wire this into a cron job or systemd timer. See [Auth monitoring](/admin/gateway/authentication) for systemd/Termux example scripts.
+Wire this into a cron job or systemd timer. See [Health checks](/admin/gateway/health-checks#automated-monitoring) for a worked systemd-timer example.
 
 ## Trusted-proxy auth (multi-user)
 
-For deployments behind an identity-aware reverse proxy (Pomerium, Caddy + OAuth, nginx + oauth2-proxy), you can delegate authentication entirely to the proxy.
+For deployments behind an identity-aware reverse proxy (Pomerium, Caddy + OAuth, nginx + oauth2-proxy), you can delegate authentication to the proxy.
 
 <Warning>
-This mode bypasses WednesdayAI's built-in authentication. Misconfiguration can expose your gateway to unauthorized access. Read this section carefully.
+This mode bypasses WednesdayAI's built-in authentication. Misconfiguration can expose your gateway. Ensure there is no path to the gateway that bypasses the proxy.
 </Warning>
 
-**When to use:**
-- You're behind Pomerium, Caddy with OAuth, or a similar identity-aware proxy
-- You want SSO or corporate IdP login (OIDC, SAML)
-- You're hitting WebSocket `1008 Unauthorized` errors because browsers can't pass tokens in WebSocket payloads
+**Use it when:** you are behind an identity-aware proxy, want SSO/IdP login, or hit WebSocket `1008 Unauthorized` because browsers cannot pass tokens in WebSocket handshakes.
 
-**When NOT to use:**
-- Your proxy is a TLS terminator only (not authenticating users)
-- There is any path to the gateway that bypasses the proxy
-- You only need single-user personal access (use Tailscale Serve + loopback instead)
-
-**Configuration** (`~/.openclaw/openclaw.json`):
+**Do not use it when:** the proxy is a TLS terminator only, any path bypasses the proxy, or you only need single-user access (use Tailscale Serve + loopback instead).
 
 ```json5
 {
   gateway: {
-    bind: "loopback",             // or "lan" if proxy is on another host
+    bind: "loopback",                       // or "lan" if the proxy is on another host
     trustedProxies: ["127.0.0.1", "::1"],   // proxy IP(s) ONLY
-
     auth: {
       mode: "trusted-proxy",
       trustedProxy: {
-        userHeader: "x-forwarded-user",       // header set by your proxy
-        requiredHeaders: ["x-forwarded-proto"],  // headers that must be present
-        allowUsers: ["admin@example.com"],    // empty = allow all authenticated users
+        userHeader: "x-forwarded-user",
+        requiredHeaders: ["x-forwarded-proto"],
+        allowUsers: ["admin@example.com"],   // empty = allow all authenticated users
       },
     },
   },
 }
 ```
 
-When trusted-proxy auth is active, Control UI WebSocket sessions can connect without device pairing. Your proxy's auth policy and `allowUsers` become the effective access control.
-
-## Checking status
-
-```bash
-openclaw models status      # current credentials and which profile is active
-openclaw doctor             # config validation + reachability checks
-```
+With trusted-proxy auth active, Control UI WebSocket sessions connect without device pairing. The proxy's policy and `allowUsers` become the effective access control.
 
 ## Troubleshooting
 
 <AccordionGroup>
   <Accordion title='"No credentials found"'>
-    The gateway cannot find a key or token for the configured provider.
-
-    1. Check that the env var is set on the **gateway host**: `echo $ANTHROPIC_API_KEY`
-    2. If running as a daemon, the env var must be in `~/.openclaw/.env` — shell environment is not inherited by systemd/launchd services.
-    3. Restart the daemon after adding the key: `systemctl --user restart openclaw-gateway`
+    1. Check the env var is set on the **gateway host**: `echo $ANTHROPIC_API_KEY`
+    2. For a daemon, the key must be in `~/.openclaw/.env` — shell env is not inherited by systemd/launchd.
+    3. Restart the daemon after adding the key.
     4. Verify: `openclaw models status`
   </Accordion>
-
   <Accordion title="Token expired">
-    For setup-token (subscription) auth, tokens expire. Re-run the token flow:
-
-    ```bash
-    claude setup-token
-    openclaw models auth paste-token --provider anthropic
-    ```
-
-    For long-lived deployments, switch to an API key — tokens require interactive renewal.
+    For setup-token (subscription) auth, re-run `claude setup-token` and `openclaw models auth paste-token --provider anthropic`. For long-lived deployments, switch to an API key.
   </Accordion>
-
   <Accordion title='"This credential is only authorized for use with Claude Code"'>
-    Anthropic has blocked the subscription credential for non-Claude-Code use. Use an Anthropic API key instead:
-
-    ```bash
-    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.openclaw/.env
-    systemctl --user restart openclaw-gateway
-    ```
+    Anthropic blocked the subscription credential for non-Claude-Code use. Use an API key instead.
   </Accordion>
-
   <Accordion title="WebSocket 1008 Unauthorized behind a reverse proxy">
-    Browsers cannot pass bearer tokens in WebSocket handshakes. Two options:
-
-    1. Enable trusted-proxy auth (see above) and let the proxy handle auth.
-    2. Use Tailscale Serve to give the gateway a `*.ts.net` hostname accessible only to authenticated devices.
+    Browsers cannot pass bearer tokens in WebSocket handshakes. Enable trusted-proxy auth, or use Tailscale Serve with `gateway.auth.allowTailscale: true`.
   </Accordion>
 </AccordionGroup>

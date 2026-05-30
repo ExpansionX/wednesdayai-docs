@@ -1,87 +1,112 @@
 ---
 title: "Messaging basics"
-description: "How to have a conversation with WednesdayAI: context, sessions, and tips."
+description: "How to have a conversation with WednesdayAI: context, memory, sharing files, and group behaviour."
 audience: user
 ---
 
 # Messaging basics
 
-Talk to WednesdayAI the same way you would with any contact — just send a message. There is no special syntax for normal conversation.
+Talk to WednesdayAI the same way you would with any contact - just send a message. There is no special syntax for normal conversation.
 
 ## Starting a conversation
 
-Send any message to the bot on your connected channel (WhatsApp, Telegram, etc.). The agent responds to your message, using your conversation history as context.
+Send any message to the bot on your connected channel (WhatsApp, Telegram, etc.). The agent responds using your conversation history as context.
 
+<Note>
 **First time?** See [Pairing your first channel](/users/pairing/first-channel) if you have not yet been connected to the gateway.
+</Note>
 
-## How context works
+## Context vs memory
 
-WednesdayAI keeps a **session** — a running window of conversation history — that provides context for each response. The agent knows what you said earlier in the session.
+These are two different things, and the difference matters:
 
-Sessions do not persist forever. When a session ends (inactivity timeout, or you start a new one), the agent starts fresh.
+- **Context** is the running conversation in your current **session** - a window of recent history the agent can see. Context is bounded: very long conversations eventually drop their earliest messages, and starting a fresh session clears it.
+- **Memory** is durable. When you ask the agent to *remember* something, it writes it to a file that survives across sessions, so it still knows it tomorrow or next week.
 
-**To start a fresh conversation:**
+<Tip>
+If you want a fact or preference to stick, ask the bot to remember it: "Remember that I prefer TypeScript." See [Memory](/users/memory) for how this works.
+</Tip>
+
+**To start a fresh conversation** (clears context for the new session):
 
 ```
 /reset
 ```
 
-Or equivalently:
+`/new` does the same. You can start fresh on a specific model:
 
 ```
-/new
+/new opus
 ```
 
-You can also start fresh with a different model:
-
-```
-/new claude-3-5-sonnet
-```
+(`opus` here is an alias your admin may have set; you can also use a full id like `anthropic/claude-opus-4-6`, or just send `/model` to see what is available.)
 
 ## Getting status
 
-Send `/status` at any time to see:
+Send `/status` at any time to see the active model, gateway connectivity, and provider usage or quota (when tracking is enabled).
 
-- Which AI model is active
-- Gateway connectivity
-- Provider usage and quota (if tracking is enabled)
-- Active sessions
+## Sharing files, images, and voice
 
-## Setting context in your message
+You can send the agent attachments directly in the chat - a photo, a screenshot, a PDF, a document, or a voice note - and ask questions about them:
 
-You can steer the conversation with natural language — no special commands needed. To be explicit, use directives:
+> (attach a photo) "What is in this picture?"
+>
+> (attach a PDF) "Summarise this report in five bullet points."
 
-- `/think high` — ask the model to reason carefully before responding
-- `/verbose on` — show detailed tool output and reasoning steps
-- `/model <name>` — switch to a specific model for this session
+See [Sharing files](/users/files) for what each channel supports.
 
-These can be combined with a message:
+## Steering the conversation
+
+You can guide the AI with natural language - no special commands needed. To be explicit, use directives:
+
+- `/think high` - ask the model to reason carefully before responding
+- `/verbose on` - show detailed tool output and reasoning steps
+- `/model <name>` - switch to a specific model for this session
+
+Directives can lead a message:
 
 ```
 /think high
 Explain how database indexes work and when to use them.
 ```
 
+A directive sent on its own (nothing else in the message) sticks for the rest of the session. A directive in front of a real message applies to that message only.
+
+### Thinking levels
+
+`/think` controls how hard the model reasons before replying. Levels:
+
+`off` `\|` `minimal` `\|` `low` `\|` `medium` `\|` `high` `\|` `xhigh` `\|` `adaptive`
+
+Higher levels are slower but better for hard problems. `adaptive` lets the model pick its own budget (the default on newer models). `xhigh` is only supported by certain models.
+
+## In a group chat
+
+When the bot is in a group, it does **not** reply to every message. By default it only wakes up when you **mention or ping it** (for example `@YourBot what's the weather?`) or reply to one of its messages. Each group has its own separate session, so commands and context in a group do not affect your private DM with the bot.
+
 ## Long conversations
 
-If your conversation is getting long and the agent is losing context or making mistakes, use:
+If a conversation is getting long and the agent is losing track or making mistakes, summarise and continue:
 
 ```
 /compact
 ```
 
-This summarizes the conversation so far and continues with a fresh context window. You can optionally add instructions:
+You can add focus instructions:
 
 ```
 /compact Focus on the authentication module we discussed.
 ```
 
+Or just start fresh with `/reset`.
+
 ## Tips
 
-- **Tool use is automatic** — if the agent needs to search the web or run code, it will. Just ask naturally.
-- **Multiple messages** — the agent processes one message at a time. If you send several quickly, they are queued.
-- **Inline shortcuts** — some commands work embedded in a message. `/help Where are the docs?` gives a help reply and then processes your question.
-- **Voice** — if your admin has enabled TTS, use `/tts always` to receive audio responses.
+- **Tool use is automatic** - if the agent needs to search the web or run code, it will. Just ask naturally.
+- **Quick messages are batched** - if you fire off several short messages in a few seconds, they are bundled into one turn rather than triggering separate replies. Attachments and commands are handled immediately.
+- **One device for long chats** - your history lives on the gateway, not your phone. If you use multiple devices, stick to one for a long conversation so context does not diverge.
+- **Inline shortcuts** - a few commands work mid-message: `Hey /status, what's the weather in Sydney?` triggers a status reply and then answers the rest.
+- **Voice** - if your admin has enabled it, ask for spoken replies with `/tts always` (on Discord the command is `/voice`).
 
 ## Quick command reference
 
@@ -90,7 +115,7 @@ This summarizes the conversation so far and continues with a fresh context windo
 | `/reset` or `/new` | Start a fresh conversation |
 | `/status` | Current model, gateway status, quota |
 | `/help` | Show available commands |
-| `/think <off/low/high>` | Adjust model reasoning depth |
+| `/think <level>` | Adjust reasoning depth (`off`-`xhigh`, `adaptive`) |
 | `/model <name>` | Switch AI model |
 | `/compact` | Summarise context and continue |
 | `/verbose on` | Show tool output and reasoning |

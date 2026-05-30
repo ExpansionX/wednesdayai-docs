@@ -1,55 +1,130 @@
 ---
 title: "Hooks"
-description: "Build event-driven automation with hooks: run code when sessions start, reset, or end."
+description: "Two kinds of hooks in WednesdayAI: in-plugin lifecycle hooks via api.on(), and standalone HOOK.md event hooks."
 audience: developer
 ---
 
 # Hooks
 
-Hooks are small TypeScript handlers that run inside the gateway when events fire — `/new`, `/reset`, `/stop`, agent lifecycle events, and more.
+WednesdayAI has **two distinct hook systems**. They share the word "hook" but are registered, discovered, and fired differently. Pick the one that matches your use case.
 
-## When to use hooks vs plugins
+| | Lifecycle hooks | Standalone hooks |
+| --- | --------------- | ---------------- |
+| Where | Inside a plugin | A `HOOK.md` + handler directory |
+| Registered via | `api.on(name, handler)` | Auto-discovery of `HOOK.md` |
+| Fires on | ~35 typed runtime events | Coarse gateway/command events |
+| Typical use | Transform LLM input/output, observe model calls, context lifecycle | Run code on `/new`, `/reset`, gateway start |
+| Can mutate the run? | Yes (some hooks) | No — side-effect automation |
 
-- **Hooks:** react to gateway events, run lightweight automation, no new tools or commands
-- **Plugins:** add new tools, commands, providers, or channel integrations
+<Warning>
+  There is no exported `HookContext` type. Lifecycle hook handlers receive a typed
+  `event` and a typed `ctx` per hook name (see `PluginHookHandlerMap`). Standalone
+  `HOOK.md` handlers receive their own runtime context. Do not `import { HookContext }`
+  from the SDK — it does not exist.
+</Warning>
 
-If you just need to run some code when a session resets, a hook is the right choice.
+## Lifecycle hooks (in-plugin, via `api.on`)
 
-## Bundled hooks
+Inside a plugin's `register` function, attach a handler to a named lifecycle event:
 
-WednesdayAI ships with four bundled hooks:
+```ts
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
-| Hook | Event | Effect |
-| ---- | ----- | ------ |
-| `session-memory` | `command:new` | Saves session context to the agent workspace |
-| `bootstrap-extra-files` | `agent:bootstrap` | Injects extra files into the workspace at startup |
-| `command-logger` | all commands | Logs all commands to `~/.openclaw/logs/commands.log` |
-| `boot-md` | gateway start | Runs `BOOT.md` when the gateway starts |
+export default function register(api: OpenClawPluginApi): void {
+  api.on("transform_llm_input", (event) => {
+    // event.messages, event.provider, event.model are typed.
+    // Return a modified messages array to mutate the run.
+    return { messages: event.messages };
+  });
 
-Enable a bundled hook:
-
-```bash
-openclaw hooks list          # see all available hooks
-openclaw hooks enable session-memory
-openclaw hooks info session-memory
+  api.on("model_call_ended", (event) => {
+    // Observe-only: read usage, headers, timing.
+    api.logger.info(`model call ${event.outcome} in ${event.durationMs}ms`);
+  });
+}
 ```
 
-## Hook structure
+`api.on(name, handler, opts?)` is fully typed: the `event` and `ctx` arguments are inferred from the hook name, and the allowed return type is enforced per hook. An optional `{ priority }` controls ordering when multiple plugins hook the same event.
 
-Each hook is a directory:
+### Mutation semantics
 
-```
+Lifecycle hooks fall into three categories:
+
+- **Mutating** — the handler's return value replaces or amends the run. Examples: `transform_llm_input` / `transform_llm_output` (rewrite messages/output), `before_tool_call` (rewrite params or `block`), `before_message_write` (rewrite or `block` the message), `before_prompt_build` (append system prompt / context), `before_model_resolve` (override model/provider), `message_sending` (rewrite or `cancel`), and the `context.*` / `compaction.plan` lifecycle hooks (contribute context, prune, plan compaction).
+- **Observe-only** — the return value is ignored. Examples: `llm_input`, `llm_output`, `model_call_ended` (read usage/headers), `agent_end`, `session_start` / `session_end`, `gateway_start` / `gateway_stop`.
+- **Short-circuiting** — `before_tool_call` may return `{ block: true, blockReason }` to stop a tool call; `before_message_write` may return `{ block: true }` to drop a message.
+
+<Note>
+  `model_call_ended` is observe-only for run control but **may** mutate `usage` and
+  `proxyMetadata` in place — core reads `proxyMetadata` back afterwards to record the
+  actual provider/model. It fires once per run attempt (after the full tool-use loop),
+  not once per individual LLM API call, and runs serially because of these in-place
+  mutation semantics.
+</Note>
+
+### Lifecycle hook catalogue
+
+These are the `PluginHookName` values accepted by `api.on(...)`. Fire timing and whether the return value is honoured are noted.
+
+| Hook | Fires | Return honoured |
+| ---- | ----- | --------------- |
+| `before_model_resolve` | Before the model/provider is chosen for a run | Yes — override `modelOverride` / `providerOverride` |
+| `before_prompt_build` | Before the system prompt and context are assembled | Yes — `systemPrompt`, `prependContext` |
+| `before_context_send` | Just before messages are sent to the model | Yes — replace `messages` |
+| `before_agent_start` | Legacy combined pre-run hook | Yes — combines prompt-build and model-resolve results |
+| `llm_input` | After input is prepared for the model | No (observe) |
+| `llm_output` | After the model returns | No (observe) |
+| `model_call_ended` | Once per run attempt, after the tool-use loop | Observe; may mutate `usage` / `proxyMetadata` in place (serial) |
+| `agent_end` | When an agent run finishes | No (observe) |
+| `before_compaction` | Before context compaction runs | No (observe) |
+| `after_compaction` | After compaction completes | No (observe) |
+| `before_reset` | On `/new` or `/reset`, before the session clears | No (observe) |
+| `message_received` | An inbound message is received | No (observe) |
+| `message_sending` | Before an outbound message is sent | Yes — rewrite `content` or `cancel` |
+| `message_sent` | After an outbound message is sent | No (observe) |
+| `before_tool_call` | Before a tool executes | Yes — rewrite `params`, or `block` with `blockReason` |
+| `after_tool_call` | After a tool executes | No (observe) |
+| `tool_result_persist` | Before a tool result is written to the transcript | Yes — replace the `message` |
+| `before_message_write` | Before any message is written to the JSONL transcript | Yes — `block` or replace the `message` |
+| `session_start` | A session starts | No (observe) |
+| `session_end` | A session ends | No (observe) |
+| `subagent_spawning` | A subagent is about to spawn | Yes — `status: "ok" \| "error"` |
+| `subagent_delivery_target` | Resolving where a subagent reply is delivered | Yes — override `origin` |
+| `subagent_spawned` | A subagent has spawned | No (observe) |
+| `subagent_ended` | A subagent ended | No (observe) |
+| `gateway_start` | The gateway process starts | No (observe) |
+| `gateway_stop` | The gateway process stops | No (observe) |
+| `transform_llm_input` | Mutate the message list before the model call | Yes — return `messages` |
+| `transform_llm_output` | Mutate assistant output after the model call | Yes — return `assistantTexts` |
+| `storage.afterAppend` | After a conversation entry is appended to storage | No (observe) |
+| `context.collect` | Collecting context for the current turn | Yes — return a `PromptContribution` |
+| `context.project` | Projecting collected contributions into messages | Yes — `messages`, `projection`, `contribution` |
+| `context.prune` | Pruning context under token pressure | Yes — `messages`, `dropped`, `compactionHandled` |
+| `compaction.plan` | Planning a compaction pass | Yes — `plan`, `messages`, `contribution` |
+
+<Tip>
+  The `context.*` and `compaction.plan` hooks are the context-engine surface. A plugin that
+  fully owns compaction can set `ownsCompaction: true` in its plugin definition (or return
+  `compactionHandled: true` from `context.prune`) so the runtime skips its built-in compaction
+  trigger and avoids double-compaction races.
+</Tip>
+
+## Standalone hooks (HOOK.md)
+
+Standalone hooks are directories auto-discovered by the gateway. They run side-effect automation on coarse events and do not modify the run.
+
+```text
 my-hook/
-├── HOOK.md          # metadata + docs
-└── handler.ts       # TypeScript handler
+├── HOOK.md          # metadata + docs (frontmatter drives discovery)
+└── handler.ts       # handler module
 ```
 
-**`HOOK.md` frontmatter:**
+`HOOK.md` frontmatter declares the events the hook handles:
 
 ```markdown
 ---
 name: my-hook
-description: "Does something useful when the session resets"
+description: "Saves a marker when the session resets"
 metadata:
   openclaw:
     emoji: "💾"
@@ -57,87 +132,43 @@ metadata:
 ---
 ```
 
-**`handler.ts`:**
+Common standalone events include `command:new`, `command:reset`, `command:stop`, `command:compact`, `agent:bootstrap`, `agent:start`, `agent:end`, and `gateway:start`. The handler exports a function (default export, or the name given by `metadata.openclaw.export`) that runs when a declared event fires.
 
-```typescript
-import type { HookContext } from "openclaw/plugin-sdk";
+### Bundled standalone hooks
 
-export async function handler(ctx: HookContext): Promise<void> {
-  const { event, session, agent } = ctx;
-
-  if (event === "command:new") {
-    // save something, call an API, write a file, etc.
-    await agent.workspace.write("last-reset.txt", new Date().toISOString());
-  }
-}
-```
-
-## Hook discovery
-
-Hooks are auto-discovered from three directories (highest precedence first):
-
-1. `<workspace>/hooks/` — per-agent hooks
-2. `~/.openclaw/hooks/` — user-installed shared hooks
-3. `<openclaw>/dist/hooks/bundled/` — bundled hooks
-
-## Installing hook packs
-
-Hook packs are npm packages that export multiple hooks:
+WednesdayAI ships several bundled hooks, disabled by default. Enable them with the CLI:
 
 ```bash
-openclaw hooks install @wednesdayai/my-hook-pack
-```
-
-Or install a local hook:
-
-```bash
-openclaw hooks install ./path/to/my-hook
-```
-
-`openclaw hooks install` runs `npm install --ignore-scripts` — keep dependencies to pure JS/TS with no postinstall build steps.
-
-## Available events
-
-| Event | Trigger |
-| ----- | ------- |
-| `command:new` | User sends `/new` or `/reset` |
-| `command:stop` | User sends `/stop` |
-| `command:compact` | User sends `/compact` |
-| `agent:bootstrap` | Agent workspace is initialised |
-| `agent:start` | Agent session starts |
-| `agent:end` | Agent session ends |
-| `gateway:start` | Gateway process starts |
-
-## Enabling hooks in config
-
-Hooks are enabled via the CLI. If you are migrating from a legacy config-based setup:
-
-```json5
-{
-  hooks: {
-    internal: {
-      enabled: true,
-      entries: {
-        "my-hook": { enabled: true },
-      },
-    },
-  },
-}
-```
-
-For new hooks, prefer the CLI:
-
-```bash
-openclaw hooks enable my-hook
+openclaw hooks list             # see all discovered hooks + status
+openclaw hooks enable session-memory
+openclaw hooks info session-memory
 openclaw hooks check
 ```
 
-## Troubleshooting hooks
+### Discovery and precedence
+
+Standalone hooks are discovered from (highest precedence first):
+
+1. `<workspace>/hooks/` — per-agent hooks
+2. `~/.openclaw/hooks/` — user-installed shared hooks
+3. bundled hooks shipped with WednesdayAI
+
+### Installing hook packs
 
 ```bash
-openclaw hooks list            # see enabled/disabled status
-openclaw hooks info my-hook    # check requirements and errors
-openclaw logs --follow | grep hook   # live log tail for hook activity
+openclaw hooks install @wednesdayai/my-hook-pack   # npm pack
+openclaw hooks install ./path/to/my-hook           # local directory
 ```
 
-If a hook is not running, restart the gateway after enabling it.
+`openclaw hooks install` runs `npm install --ignore-scripts`. Keep dependencies to pure JS/TS with no postinstall build steps.
+
+## Which hook should I use?
+
+- Need to **transform the run** (rewrite LLM input/output, gate tool calls, shape context, observe model usage)? Use a **lifecycle hook** in a plugin via `api.on(...)`.
+- Need to **run a side effect on a coarse event** (`/new`, `/reset`, gateway start) without modifying the run? Use a **standalone HOOK.md hook**.
+
+## What's next
+
+- [Write your first plugin](/developers/plugins/your-first-plugin) — where `api.on(...)` lives
+- [Agent tools](/developers/agent-tools) — register tools the AI can call
+- [Plugin SDK reference](/developers/sdk) — the full exported surface

@@ -53,7 +53,10 @@
               "admin/gateway/authentication",
               "admin/gateway/remote-access",
               "admin/gateway/logging",
-              "admin/gateway/health-checks"
+              "admin/gateway/health-checks",
+              "admin/multi-gateway",
+              "admin/secrets",
+              "admin/sandboxing"
             ]
           },
           {
@@ -65,7 +68,23 @@
               "admin/channels/telegram",
               "admin/channels/discord",
               "admin/channels/slack",
-              "admin/channels/signal"
+              "admin/channels/signal",
+              "admin/channels/imessage",
+              "admin/channels/msteams",
+              "admin/channels/matrix"
+            ]
+          },
+          {
+            "group": "AI providers",
+            "icon": "brain-circuit",
+            "pages": [
+              "admin/providers/index",
+              "admin/providers/anthropic",
+              "admin/providers/openai",
+              "admin/providers/google",
+              "admin/providers/ollama",
+              "admin/providers/openrouter",
+              "admin/providers/litellm"
             ]
           },
           {
@@ -79,6 +98,7 @@
             "group": "Maintenance",
             "icon": "wrench",
             "pages": [
+              "admin/doctor",
               "admin/upgrading",
               "admin/troubleshooting"
             ]
@@ -97,7 +117,8 @@
               "users/pairing/first-channel",
               "users/pairing/whatsapp",
               "users/pairing/telegram",
-              "users/pairing/discord"
+              "users/pairing/discord",
+              "users/pairing/imessage"
             ]
           },
           {
@@ -105,7 +126,9 @@
             "icon": "message-circle",
             "pages": [
               "users/messaging",
-              "users/commands"
+              "users/commands",
+              "users/memory",
+              "users/files"
             ]
           },
           {
@@ -133,7 +156,9 @@
             "icon": "rocket",
             "pages": [
               "developers/overview",
-              "developers/plugins/your-first-plugin"
+              "developers/plugins/your-first-plugin",
+              "developers/plugins/manifest",
+              "developers/plugins/publishing"
             ]
           },
           {
@@ -142,20 +167,9 @@
             "pages": [
               "developers/hooks",
               "developers/channel-adapters",
-              "developers/agent-tools"
-            ]
-          },
-          {
-            "group": "AI providers",
-            "icon": "brain-circuit",
-            "pages": [
-              "developers/providers/index",
-              "developers/providers/anthropic",
-              "developers/providers/openai",
-              "developers/providers/google",
-              "developers/providers/ollama",
-              "developers/providers/openrouter",
-              "developers/providers/litellm"
+              "developers/agent-tools",
+              "developers/analysis-runtime",
+              "developers/agent-signals"
             ]
           },
           {

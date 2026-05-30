@@ -6,17 +6,17 @@ audience: admin
 
 # WhatsApp
 
-WednesdayAI connects to WhatsApp via the WhatsApp Web protocol (Baileys). The gateway owns the linked session and reconnect loop. This is the same mechanism WhatsApp Web uses — you link a WhatsApp number to the gateway, and it sends and receives messages on that number's behalf.
+WednesdayAI connects to WhatsApp via the WhatsApp Web protocol (Baileys). The gateway owns the linked session and reconnect loop — you link a WhatsApp number to the gateway, and it sends and receives on that number's behalf.
 
 <Warning>
-WhatsApp requires the gateway to run on **Node.js** (not Bun). Bun is flagged as incompatible for stable WhatsApp operation.
+WhatsApp requires the gateway to run on **Node.js** (not Bun). Bun is flagged as incompatible for stable WhatsApp operation. `openclaw doctor` warns when the service is on Bun or a version-managed Node path.
 </Warning>
 
 ## Prerequisites
 
-- A WhatsApp-capable phone number (separate dedicated number recommended)
+- A WhatsApp-capable phone number (a separate dedicated number is recommended)
 - The gateway running on Node.js 22+
-- The phone that holds the WhatsApp account online and reachable during linking
+- The phone that holds the account online and reachable during linking
 
 <Tip>
 Use a **dedicated number** for the bot when possible. A personal number adds complexity around self-chat, allowlist management, and number confusion.
@@ -24,50 +24,44 @@ Use a **dedicated number** for the bot when possible. A personal number adds com
 
 ## Quick setup
 
-**1. Configure access policy:**
+<Steps>
+  <Step title="Configure access policy">
+    ```json5
+    // ~/.openclaw/openclaw.json
+    {
+      channels: {
+        whatsapp: {
+          enabled: true,
+          dmPolicy: "pairing",          // pairing | allowlist | open | disabled
+          allowFrom: ["+15555550123"],  // E.164 numbers allowed to message the bot
+        },
+      },
+    }
+    ```
+  </Step>
+  <Step title="Link the WhatsApp number">
+    ```bash
+    openclaw channels login --channel whatsapp
+    ```
 
-```json5
-// ~/.openclaw/openclaw.json
-{
-  channels: {
-    whatsapp: {
-      enabled: true,
-      dmPolicy: "pairing",          // pairing | allowlist | open | disabled
-      allowFrom: ["+15555550123"],  // E.164 numbers allowed to message the bot
-    },
-  },
-}
-```
+    Scan the QR with the WhatsApp app on the phone holding the number. The QR expires after about 2 minutes — re-run if it times out. For a named account: `openclaw channels login --channel whatsapp --account work`.
+  </Step>
+  <Step title="Start the gateway and approve pairing">
+    ```bash
+    openclaw gateway run
+    openclaw pairing list whatsapp
+    openclaw pairing approve whatsapp <CODE>
+    ```
 
-**2. Link the WhatsApp number:**
-
-```bash
-openclaw channels login --channel whatsapp
-```
-
-Scan the QR code with the WhatsApp app on the phone holding the number. The QR expires after ~2 minutes — if it times out, run the command again.
-
-For a named account (multi-account setup):
-```bash
-openclaw channels login --channel whatsapp --account work
-```
-
-**3. Start the gateway and approve pairing requests:**
-
-```bash
-openclaw gateway run
-openclaw pairing list whatsapp
-openclaw pairing approve whatsapp <CODE>
-```
-
-Pairing codes expire after 1 hour. Pending requests are capped at 3 per channel.
-
-**4. Verify:**
-
-```bash
-openclaw channels status --channel whatsapp
-openclaw status --deep
-```
+    Pairing codes expire after 1 hour; pending requests are capped at 3 per channel.
+  </Step>
+  <Step title="Verify">
+    ```bash
+    openclaw channels status --channel whatsapp
+    openclaw status --deep
+    ```
+  </Step>
+</Steps>
 
 ## Access control
 
@@ -75,12 +69,10 @@ openclaw status --deep
 
 | `dmPolicy` | Effect |
 | ---------- | ------ |
-| `"pairing"` | New senders get a one-time pairing code; the bot ignores them until you approve (default) |
+| `"pairing"` | New senders get a one-time pairing code; ignored until approved (default) |
 | `"allowlist"` | Only numbers in `allowFrom` can initiate DMs |
 | `"open"` | Any sender allowed (requires `allowFrom: ["*"]`) |
 | `"disabled"` | Bot ignores all DMs |
-
-Configure `allowFrom` with E.164-format numbers:
 
 ```json5
 {
@@ -102,21 +94,20 @@ Configure `allowFrom` with E.164-format numbers:
       groupPolicy: "allowlist",       // open | allowlist | disabled
       groupAllowFrom: ["+15555550123"],
       groups: {
-        "120363000000000000@g.us": true,  // specific group allowlist
+        "120363000000000000@g.us": true,
       },
     },
   },
 }
 ```
 
-Group messages require a mention by default. To allow responses without mention:
+Group messages require a mention by default. To allow responses without a mention:
+
 ```json5
 { channels: { whatsapp: { groups: { "*": { requireMention: false } } } } }
 ```
 
 ## Multi-account setup
-
-Run multiple WhatsApp numbers from one gateway:
 
 ```json5
 {
@@ -132,7 +123,6 @@ Run multiple WhatsApp numbers from one gateway:
 }
 ```
 
-Link each account separately:
 ```bash
 openclaw channels login --channel whatsapp --account personal
 openclaw channels login --channel whatsapp --account work
@@ -144,9 +134,9 @@ openclaw channels login --channel whatsapp --account work
 {
   channels: {
     whatsapp: {
-      textChunkLimit: 4000,           // max chars per message chunk
+      textChunkLimit: 4000,
       chunkMode: "length",            // length | newline
-      mediaMaxMb: 50,                 // inbound media download cap
+      mediaMaxMb: 50,
       sendReadReceipts: true,
       ackReaction: {
         emoji: "👀",
@@ -160,14 +150,13 @@ openclaw channels login --channel whatsapp --account work
 
 ## Credentials and storage
 
-WhatsApp credentials are stored at `~/.openclaw/credentials/whatsapp/<accountId>/creds.json`.
+WhatsApp credentials live at `~/.openclaw/credentials/whatsapp/<accountId>/creds.json`.
 
 ```bash
-# Check credential freshness
 ls -l ~/.openclaw/credentials/whatsapp/default/creds.json
 ```
 
-A recent `mtime` indicates the session is active. A stale or missing file means the channel is logged out.
+A recent `mtime` indicates an active session; a stale or missing file means the channel is logged out.
 
 ## Disabling without removing config
 
@@ -175,7 +164,7 @@ A recent `mtime` indicates the session is active. A stale or missing file means 
 { channels: { whatsapp: { enabled: false } } }
 ```
 
-Restart the gateway to take effect: `systemctl --user restart openclaw-gateway`
+Restart the gateway to apply: `systemctl --user restart openclaw-gateway`.
 
 ## Troubleshooting
 
@@ -186,30 +175,19 @@ Restart the gateway to take effect: `systemctl --user restart openclaw-gateway`
     openclaw channels login --channel whatsapp --verbose
     ```
 
-    The phone must be online and connected to the internet. The QR times out after ~2 minutes.
+    The phone must be online. The QR times out after about 2 minutes.
   </Accordion>
-
-  <Accordion title="Status codes 409–515 in logs">
-    A conflicting WhatsApp Web session is open. Close all other WhatsApp Web browser sessions, then relink:
-
-    ```bash
-    openclaw channels logout --channel whatsapp
-    openclaw channels login --channel whatsapp
-    ```
-
-    Status 515 auto-retries once after pairing — this is normal.
+  <Accordion title="Status codes 409-515 in logs">
+    A conflicting WhatsApp Web session is open. Close all other WhatsApp Web browser sessions, then relink. Status 515 auto-retries once after pairing — this is normal.
   </Accordion>
-
   <Accordion title="Group messages not routing to the agent">
-    Check in order:
     1. `groupPolicy` is `"open"` or `"allowlist"` with the group in `groups`
     2. `groupAllowFrom` includes the sender (or falls back to `allowFrom`)
-    3. Mention requirement: `requireMention: false` in groups config, or the message mentions the bot
-    4. No duplicate keys in `openclaw.json` (check with `openclaw doctor`)
+    3. Mention requirement: `requireMention: false`, or the message mentions the bot
+    4. No duplicate keys in `openclaw.json` (`openclaw doctor`)
   </Accordion>
-
   <Accordion title="No active listener when sending">
-    The gateway is not running or the WhatsApp account is not linked.
+    The gateway is not running or the account is not linked:
 
     ```bash
     openclaw gateway status
@@ -220,6 +198,6 @@ Restart the gateway to take effect: `systemctl --user restart openclaw-gateway`
 
 ## Related
 
-- [Channel pairing (user guide)](/users/pairing/first-channel)
-- [Gateway configuration — WhatsApp](/reference/config#whatsapp)
+- [Channel setup](/admin/channels)
 - [Channel troubleshooting](/admin/troubleshooting)
+- [Doctor](/admin/doctor)

@@ -1,0 +1,69 @@
+---
+title: "Memory"
+description: "How WednesdayAI remembers facts and preferences across conversations - and how to make something stick."
+audience: user
+---
+
+# Memory
+
+WednesdayAI can remember things about you across conversations - your preferences, important facts, decisions you have made. This is different from the running context of a single chat.
+
+## Memory vs context
+
+- **Context** is what the AI can see in your **current conversation**. It is limited and temporary: very long conversations drop their earliest messages, and starting a new session (`/reset`) clears it.
+- **Memory** is **durable**. When the AI saves something to memory, it stays there - so it still knows it tomorrow, next week, or in a brand-new conversation.
+
+Think of context as short-term memory and memory as long-term notes the AI keeps for you.
+
+## How to make something stick
+
+The simplest way: **just ask the bot to remember it.**
+
+> "Remember that I prefer TypeScript over JavaScript."
+>
+> "Remember my project deadline is the 14th."
+>
+> "Make a note that I'm allergic to penicillin."
+
+When you say "remember this", the AI writes it down to a durable note rather than just holding it in the conversation. If you want something to last, asking explicitly is the most reliable way.
+
+<Tip>
+The AI also tries to save important things on its own, especially before a long conversation gets summarised. But if it genuinely matters, ask it to remember - do not assume it will guess.
+</Tip>
+
+## Recalling something later
+
+Just ask, in a new conversation or the same one:
+
+> "What did I tell you about my deadline?"
+>
+> "What's my preferred programming language?"
+>
+> "Remind me what we decided about the hosting setup."
+
+The AI can search its notes and bring back what is relevant, even if you phrase the question differently from how you first saved it.
+
+## Updating or removing a memory
+
+Tell the bot what changed:
+
+> "Update my deadline - it's now the 20th."
+>
+> "Forget what I said about the old hosting plan."
+
+The AI will revise its notes accordingly.
+
+## Good things to remember
+
+- Preferences: how you like answers formatted, your timezone, your preferred tools or languages
+- Stable facts: your projects, your role, recurring people or systems you mention
+- Decisions: choices you have made so you do not have to re-explain them
+
+## What memory is *not*
+
+- It is **not** a place for secrets you would not want stored. Treat memory like a notebook the AI keeps on the gateway - do not save passwords or sensitive credentials there.
+- It is **not** automatic for everything. Casual chit-chat is not saved unless you ask.
+
+<Note>
+In group chats, the AI keeps your private long-term memory out of the shared conversation. Personal notes belong to your private session with the bot.
+</Note>

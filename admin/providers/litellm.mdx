@@ -1,0 +1,88 @@
+---
+title: "LiteLLM / Bifrost"
+description: "Route WednesdayAI through a self-hosted LiteLLM or Bifrost proxy for centralised model management and cost tracking."
+audience: admin
+---
+
+# LiteLLM / Bifrost
+
+LiteLLM and Bifrost are self-hosted LLM proxies that sit between WednesdayAI and AI providers. They provide centralised key management, budget limits, usage tracking, and team access control.
+
+## When to use a proxy
+
+- Centralised API-key management for a team
+- Per-user or per-team cost tracking
+- Enforced model-access policies
+- You already run LiteLLM or Bifrost in your infrastructure
+
+## LiteLLM
+
+[LiteLLM](https://github.com/BerriAI/litellm) exposes 100+ models behind a single OpenAI-compatible API. Configure it as a custom provider under `models.providers`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "litellm/claude-sonnet-4-6" },
+    },
+  },
+  models: {
+    mode: "merge",
+    providers: {
+      litellm: {
+        baseUrl: "http://localhost:4000",
+        apiKey: "your-litellm-master-key",
+        api: "openai-completions",
+        models: [{ id: "claude-sonnet-4-6", name: "Sonnet via LiteLLM" }],
+      },
+    },
+  },
+}
+```
+
+The model reference must match how the model is configured in LiteLLM.
+
+## Bifrost
+
+Bifrost is WednesdayAI's native LLM-proxy integration. When requests route through Bifrost, the gateway captures the actual provider and model from the `x-bifrost-provider` and `x-bifrost-model` response headers and records them in run metadata — useful for auditing which backend handled each request.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "bifrost/anthropic/claude-sonnet-4-6" },
+    },
+  },
+  models: {
+    mode: "merge",
+    providers: {
+      bifrost: {
+        baseUrl: "http://bifrost.internal:8080",
+        apiKey: "your-bifrost-key",
+        api: "openai-completions",
+        models: [{ id: "anthropic/claude-sonnet-4-6", name: "Sonnet via Bifrost" }],
+      },
+    },
+  },
+}
+```
+
+Header capture comes from the bundled Bifrost extension:
+
+```bash
+openclaw plugins install @wednesdayai/bifrost
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection refused">
+    The proxy is not running. Confirm LiteLLM or Bifrost is up and listening on the configured port.
+  </Accordion>
+  <Accordion title="401 from the proxy">
+    The `apiKey` does not match the proxy's master key. Update the provider's `apiKey`.
+  </Accordion>
+  <Accordion title="Model not found">
+    The model `id` must match exactly how it is configured in the proxy. Check the proxy's model list or admin UI.
+  </Accordion>
+</AccordionGroup>

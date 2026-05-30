@@ -1,0 +1,82 @@
+---
+title: "Pair iMessage"
+description: "Chat with WednesdayAI through the Messages app on iPhone and Mac."
+audience: user
+---
+
+# Pair iMessage
+
+If your WednesdayAI is set up for iMessage, you talk to it straight from the **Messages** app on your iPhone or Mac - just text the bot's number or Apple ID like any other contact.
+
+iMessage runs on a Mac behind the scenes (using either the recommended **BlueBubbles** setup or the legacy connector). As a user you do not need to know which one your admin chose - the experience is the same.
+
+## What you need
+
+- A device signed in to iMessage (iPhone, iPad, or Mac)
+- The bot's iMessage address from your administrator - either a phone number or an Apple ID email
+
+## Steps
+
+<Steps>
+  <Step title="Get the bot's iMessage address">
+    Ask your administrator for the phone number or Apple ID the bot uses on iMessage.
+  </Step>
+
+  <Step title="Start a new conversation">
+    In Messages, start a new message to that address, just as you would text anyone.
+  </Step>
+
+  <Step title="Send your first message">
+    Type a message and send it. If you are already approved, the AI replies within a few seconds.
+  </Step>
+</Steps>
+
+## You may get a pairing code first
+
+iMessage usually runs in **pairing mode**, which means an unknown sender is held until the owner approves them. The first time you message the bot, you may get back a short **8-character code** instead of a normal reply.
+
+That is expected:
+
+1. Send the code to your administrator (or approve it yourself if you self-host).
+2. Codes **expire after about an hour**.
+3. Once approved, message the bot again and it will respond normally.
+
+<Note>
+If you self-host, approve a pending request with:
+```bash
+openclaw pairing list imessage
+openclaw pairing approve imessage <CODE>
+```
+</Note>
+
+## In a group chat
+
+In a group iMessage thread the bot stays quiet until you get its attention. iMessage does not have a built-in @-mention the way some apps do, so the bot recognises a "mention" by a name pattern your admin has configured (for example its name or number in your message).
+
+- Include the bot's name or number in your message to wake it.
+- If a group thread is not getting answered, the group may not be allowed yet, or no mention pattern is set up - ask your administrator.
+
+## Tips
+
+- **Photos and attachments** - if your admin has enabled inbound attachments, you can send images and files for the AI to look at. See [Sharing files](/users/files).
+- **Same address, all your devices** - because iMessage syncs across your Apple devices, you can start a conversation on your iPhone and pick it up on your Mac.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The bot does not respond at all">
+    You may not be approved yet. If you got a pairing code, make sure your admin approved it (codes expire after about an hour). Otherwise ask your admin to confirm your address is allowed.
+  </Accordion>
+
+  <Accordion title="My message shows as a green (SMS) bubble">
+    The bot's address may not support iMessage, or your device fell back to SMS. Confirm the correct iMessage address with your administrator.
+  </Accordion>
+
+  <Accordion title="The bot ignores me in a group">
+    In groups the bot only replies when it recognises a mention. Include its name or number in your message. If it still does not respond, ask your admin to check the group's settings.
+  </Accordion>
+
+  <Accordion title="Replies are slow or stop after a while">
+    iMessage relies on a Mac staying awake and signed in. If replies stop, ask your administrator to check that the Mac and the Messages app are running.
+  </Accordion>
+</AccordionGroup>

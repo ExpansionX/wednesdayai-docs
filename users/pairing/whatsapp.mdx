@@ -1,12 +1,12 @@
 ---
 title: "Pair WhatsApp"
-description: "Connect WednesdayAI to WhatsApp by scanning a QR code — takes under a minute."
+description: "Connect WednesdayAI to WhatsApp by scanning a QR code - takes under a minute."
 audience: user
 ---
 
 # Pair WhatsApp
 
-Connecting WednesdayAI to WhatsApp takes about a minute. You scan a QR code on your phone — no phone number entry, no verification code.
+Connecting WednesdayAI to WhatsApp takes about a minute. You scan a QR code on your phone - no phone number entry, no verification code.
 
 ## What you need
 
@@ -15,49 +15,60 @@ Connecting WednesdayAI to WhatsApp takes about a minute. You scan a QR code on y
 
 ## Steps
 
-### 1. Ask your administrator for the QR code
+<Steps>
+  <Step title="Ask your administrator for the QR code">
+    Your administrator can show the pairing QR code by running:
 
-Your administrator can show the pairing QR code by running:
+    ```bash
+    openclaw channels whatsapp qr
+    ```
 
-```bash
-openclaw channels whatsapp qr
-```
+    This displays a QR code in the terminal, or they can share it with you as an image.
+  </Step>
 
-This displays a QR code in the terminal, or they can share it with you as an image.
+  <Step title="Scan the QR code on your phone">
+    On your phone:
 
-### 2. Scan the QR code on your phone
+    1. Open WhatsApp
+    2. Tap the **three-dot menu** (Android) or **Settings** (iPhone)
+    3. Tap **Linked devices**
+    4. Tap **Link a device**
+    5. Scan the QR code your administrator showed you
 
-On your phone:
+    You will see "Device successfully linked" in WhatsApp.
+  </Step>
 
-1. Open WhatsApp
-2. Tap the **three-dot menu** (Android) or **Settings** (iPhone)
-3. Tap **Linked devices**
-4. Tap **Link a device**
-5. Scan the QR code your administrator showed you
+  <Step title="Say hello">
+    WednesdayAI will send you a welcome message in WhatsApp within a few seconds of linking.
 
-You'll see "Device successfully linked" in WhatsApp.
+    If nothing arrives after 30 seconds, send a message yourself:
 
-### 3. Say hello
+    > Hi
 
-WednesdayAI will send you a welcome message in WhatsApp within a few seconds of linking.
+    This confirms the connection is working.
+  </Step>
+</Steps>
 
-If you don't receive a welcome message after 30 seconds, send a message yourself:
+## In a group? Mention the bot
 
-> Hi
+If the bot is in a WhatsApp group, it does **not** answer every message - it stays quiet until you **ping it**. To get its attention:
 
-This confirms the connection is working.
+- Tap to @-mention it, or type its name, or include its number in your message
+- Or reply to one of its previous messages
+
+Each group has its own private session, so what you say in a group does not mix with your one-on-one chat.
 
 ## Tips
 
-- **WhatsApp must stay connected** — your phone needs an internet connection for messages to reach WednesdayAI. The gateway buffers messages while your phone is briefly offline, but extended offline periods may cause delays.
-- **You don't need to keep WhatsApp open** — background delivery works as long as your phone has a data connection.
-- **Re-linking** — if your phone is factory reset or WhatsApp is reinstalled, you'll need to re-scan the QR code. Ask your administrator.
+- **WhatsApp must stay connected** - your phone needs an internet connection for messages to reach WednesdayAI. The gateway buffers messages while your phone is briefly offline, but long offline periods may cause delays.
+- **You do not need to keep WhatsApp open** - background delivery works as long as your phone has a data connection.
+- **Re-linking** - if your phone is factory reset or WhatsApp is reinstalled, you will need to re-scan the QR code. Ask your administrator.
 
 ## Troubleshooting
 
 <AccordionGroup>
   <Accordion title="QR code expired before I could scan it">
-    QR codes expire after 20 seconds. Ask your administrator to run the QR command again to get a fresh code.
+    QR codes expire quickly. Ask your administrator to run the QR command again to get a fresh code.
   </Accordion>
 
   <Accordion title="Welcome message never arrived">
@@ -68,7 +79,11 @@ This confirms the connection is working.
     You have been away for a long time and the session timed out. Ask your administrator to generate a new QR code and re-scan it.
   </Accordion>
 
-  <Accordion title="My messages are going to the wrong AI or aren't being answered">
+  <Accordion title="The bot ignores me in a group">
+    In groups the bot only replies when mentioned, pinged, or replied to. Make sure you are pinging it. If it still does not respond, the group may not be allowed yet - ask your administrator.
+  </Accordion>
+
+  <Accordion title="My messages are going to the wrong AI or are not being answered">
     Your administrator may need to add your WhatsApp number to the allowed contacts list. Ask them to check the channel access policy.
   </Accordion>
 </AccordionGroup>

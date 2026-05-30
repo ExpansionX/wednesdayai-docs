@@ -12,7 +12,7 @@ WednesdayAI works inside the apps you already use. This guide walks you through 
 
 <CardGroup cols={2}>
   <Card title="WhatsApp" href="/users/pairing/whatsapp" icon="message-circle">
-    The most popular option. Scan a QR code — no phone number required.
+    The most popular option. Scan a QR code - no phone number to enter.
   </Card>
   <Card title="Telegram" href="/users/pairing/telegram" icon="send">
     Fast and reliable. Message the bot your administrator set up.
@@ -21,22 +21,38 @@ WednesdayAI works inside the apps you already use. This guide walks you through 
     Chat with your AI in a Discord server or via DM.
   </Card>
   <Card title="iMessage" href="/users/pairing/imessage" icon="message">
-    macOS and iPhone users — pair directly via the Messages app.
+    macOS and iPhone users - pair through the Messages app.
   </Card>
 </CardGroup>
 
 ## What "pairing" means
 
-When you pair a channel, WednesdayAI learns to recognise messages from you on that channel and route your conversations to your AI. It is a one-time setup step.
+When you pair a channel, WednesdayAI learns to recognise messages from you on that channel and routes your conversations to your AI. It is a one-time setup step.
 
 After pairing:
 - Your messages in the channel reach your AI instantly
 - Your conversation history is private to you
 - You can use all [slash commands](/users/commands) and [built-in tools](/users/tools/index)
 
+## What if I get a pairing code?
+
+Some channels are set up so that an unknown sender is not answered until the owner approves them. The first time you message the bot, you may get a short reply with an **8-character code** (uppercase letters and numbers) instead of a normal answer.
+
+That is expected. It means:
+
+1. Your message has **not** been processed yet - it is held until you are approved.
+2. Send that code to your administrator (or approve it yourself if you self-host).
+3. Codes **expire after about an hour**, and the bot only sends a fresh one roughly once per hour, so do not wait too long.
+
+Once approved, message the bot again and it will respond normally.
+
+<Note>
+If you self-host, you approve a pending request with `openclaw pairing approve <channel> <CODE>`.
+</Note>
+
 ## Before you start
 
-Make sure your administrator has already set up the WednesdayAI gateway and the channel you want to use. If you are not sure, send a message to your administrator or check the [admin docs](/admin/channels/index).
+Make sure your administrator has already set up the WednesdayAI gateway and the channel you want to use. If you are not sure, ask them, or check the [admin docs](/admin/channels/index).
 
 ## After pairing
 

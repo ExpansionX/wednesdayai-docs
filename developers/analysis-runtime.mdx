@@ -1,0 +1,120 @@
+---
+title: "Analysis runtime"
+description: "Run focused, plugin-owned LLM analysis through api.runtime.analysis without importing core internals."
+audience: developer
+---
+
+# Analysis runtime
+
+`api.runtime.analysis` lets a plugin run focused LLM analysis through the same provider, model, auth-profile, and timeout plumbing WednesdayAI uses for agent turns — without importing core internals. Use it for memory recall, fact extraction, topic detection, or background-classification style plugins.
+
+## `run(...)` — await the result
+
+Use `run(...)` when the current turn should wait for the analysis result:
+
+```ts
+const result = await api.runtime.analysis.run({
+  purpose: "topic-detection",
+  systemPrompt: "Return a compact JSON object with the topic and confidence.",
+  input: event.cleanUserMessage.content,
+  responseFormat: "json",
+  timeoutMs: 10_000,
+});
+
+if (result.status === "ok" && result.json) {
+  return {
+    contribution: {
+      systemPrompt: `Detected topic: ${JSON.stringify(result.json)}`,
+    },
+  };
+}
+```
+
+## `enqueue(...)` — fire and forget
+
+Use `enqueue(...)` when the current turn should not wait — for example memory extraction or background indexing. An optional completion callback runs after the analysis lane is released:
+
+```ts
+api.runtime.analysis.enqueue(
+  {
+    purpose: "memory-extraction",
+    systemPrompt: "Extract durable user facts as JSON.",
+    input: event.cleanUserMessage.content,
+    responseFormat: "json",
+    timeoutMs: 30_000,
+  },
+  async (result) => {
+    if (result.status === "ok") {
+      await saveFacts(result.json);
+    }
+  },
+);
+```
+
+## Parameters
+
+`AnalysisRunParams` — `purpose` and `input` are required:
+
+| Field | Type | Notes |
+| ----- | ---- | ----- |
+| `purpose` | `string` | Required. Short label for the analysis. |
+| `input` | `string` | Required. The text to analyse. |
+| `systemPrompt` | `string` | Optional system prompt. |
+| `responseFormat` | `"text" \| "json"` | Output format. |
+| `provider` / `model` | `string` | Override the provider/model — **both** must be set together. |
+| `authProfileId` | `string` | Auth profile to use. |
+| `sessionKey` | `string` | Pass when using memory tools, so memory scope rules evaluate against the source chat. |
+| `timeoutMs` | `number` | Per-run timeout. |
+| `toolsAllow` | `string[]` | Tool allow-list (see below). |
+| `maxOutputTokens` / `temperature` | `number` | Generation controls. |
+
+## Result
+
+`AnalysisResult` carries a `status` you should branch on first:
+
+| `status` | Meaning |
+| -------- | ------- |
+| `ok` | Success. Read `text` or `json`. |
+| `empty` | The model returned nothing usable. |
+| `timeout` | The run exceeded `timeoutMs`. |
+| `error` | A system-level failure — read `error`. For a JSON-parse failure, `text` still holds the raw model output. |
+| `rejected` | The request was rejected before running (invalid params). |
+
+System-level failures populate `result.error` only and leave `result.text` undefined. The `text` field is reserved for actual model output (including the case where the model returned text that failed JSON parsing). Branch on `status` first; read `text` only for `ok` and JSON-parse `error` outcomes.
+
+## Memory tools in analysis
+
+By default, analysis runs are LLM-only. To grant read-only memory access, pass an explicit allow-list:
+
+```ts
+await api.runtime.analysis.run({
+  purpose: "memory-recall",
+  systemPrompt: "Find relevant durable memories. Return concise bullets.",
+  input: event.cleanUserMessage.content,
+  sessionKey: event.sessionKey,
+  toolsAllow: ["memory_search", "memory_get"],
+});
+```
+
+Only `memory_search` and `memory_get` are accepted in analysis allow-lists. Pass the originating `sessionKey` so memory scope rules evaluate against the source channel or direct chat.
+
+## Lanes, admission, and bounds
+
+- Analysis runs use a dedicated command lane, so awaited hook-time analysis does not queue behind the active user turn. The lane runs **one** analysis at a time.
+- Background (`enqueue`) analysis is queued behind a small per-plugin cap. It yields to awaited work, and returns `accepted: false` with `reason: "queue-full"` when that plugin is saturated.
+- If background analysis is already running, a new awaited `run(...)` is rejected immediately rather than waiting behind the job.
+- Both `run(...)` and `enqueue(...)` validate params synchronously before claiming the lane or a quota. Invalid requests (empty `purpose`, empty `input`, a `provider` without a `model`, or a tool outside the allow-list) are rejected immediately — `run(...)` returns `status: "rejected"`; `enqueue(...)` returns `accepted: false` with `reason: "invalid"`.
+
+## Constraints to keep in mind
+
+- Analysis runs do **not** rewrite the raw user message. To affect the active turn, contribute context through normal hook returns (for example a `PromptContribution` from `context.collect`).
+- Analysis is **text-only** in v1: prompt text that looks like a local image path is not auto-loaded.
+- Provider overrides must include **both** `provider` and `model` — a provider-only override is rejected so a plugin cannot accidentally pair one provider with another's default model id.
+- Transient analysis runs skip workspace cwd changes, skill environment overrides, sandbox startup, bootstrap context loading, and global hook dispatch. The transcript uses a transient internal session key and is not synced back to session storage.
+- Keep prompts narrow, set a timeout, and prefer `enqueue(...)` for work that updates plugin-owned state for future turns. Completion callbacks still run inside the plugin host process — keep them bounded.
+
+## What's next
+
+- [Plugin SDK reference](/developers/sdk)
+- [Hooks](/developers/hooks) — where `context.collect` and the other lifecycle hooks live
+- [Agent signals](/developers/agent-signals)

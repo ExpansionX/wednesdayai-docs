@@ -1,6 +1,6 @@
 ---
 title: "Troubleshooting"
-description: "Fix common issues: the bot not responding, slow replies, and context problems."
+description: "Fix common issues: the bot not responding, group silence, slow replies, and context problems."
 audience: user
 ---
 
@@ -8,80 +8,85 @@ audience: user
 
 ## The bot is not responding
 
-1. **Check you are on the allowlist.** Your admin needs to add your number or username to the allowlist before the gateway responds to your messages.
+1. **Check you are allowed.** Your admin needs to add you (your number, username, or ID) to the allowlist, or approve your pairing, before the gateway responds. On a pairing channel you may have received a one-time code - see [Pair your first channel](/users/pairing/first-channel).
 
-2. **Try `/status`** — if the bot responds, it is working. If not, the issue is likely connectivity or the allowlist.
+2. **Try `/status`.** If the bot replies, it is working and the problem is elsewhere (model, allowlist for that command, or the specific channel). If `/status` also does nothing, it is likely connectivity or that you are not yet authorised.
 
-3. **Check the gateway is running.** Ask your admin, or if you manage the gateway yourself:
+3. **Ask your admin to check the gateway.** If you self-host, you can check it yourself:
    ```bash
    openclaw gateway status
    ```
 
-4. **Try the control panel** at `http://localhost:18789/` — if the chat works there but not in your messaging app, the issue is the channel connection.
+## The bot does not respond in a group
+
+In a group chat the bot only wakes up when it is **mentioned or pinged**, or when you **reply to one of its messages**. It deliberately ignores everything else so it does not spam the group.
+
+- Mention it by name or `@handle`: `@YourBot what's the weather today?`
+- Or reply directly to a message it sent.
+
+If it still ignores mentions, the group may not be allowed yet, or mention detection may need configuring - ask your admin.
 
 ## The bot is slow to respond
 
-- **Complex tool use takes time.** If the agent is running code, searching the web, or controlling a browser, it may take 10–30 seconds.
-- **Thinking mode** (`/think high`) is slower by design — the model reasons before responding.
-- `/think off` disables extended reasoning and usually speeds up responses.
+- **Tool use takes time.** Running code, searching the web, or controlling a browser can take 10-30 seconds.
+- **Thinking mode is slower by design.** `/think high` reasons before responding; `/think off` (or a lower level) usually speeds things up.
 
-## The bot seems to have forgotten context
+## The bot seems to have forgotten something
 
-Context windows have limits. If a conversation is very long, earlier messages fall out of the window.
+There are two different cases:
 
-Use `/compact` to summarise the conversation and continue:
+- **Lost track within a conversation** - the context window filled up and earlier messages dropped out. Use `/compact` to summarise and continue, or `/reset` to start fresh.
+- **Forgot a fact from days ago** - that was never saved to durable memory. Ask the bot to remember it explicitly next time: "Remember that ...". See [Memory](/users/memory).
 
 ```
 /compact
 ```
 
-Or start fresh:
-
-```
-/reset
-```
-
 ## I got an error response
-
-Common error messages and what they mean:
 
 | Message | Likely cause |
 | ------- | ------------ |
-| "No credentials found" | The AI provider key is missing or expired — tell your admin |
-| "Rate limit exceeded" | Too many requests to the AI provider — wait a minute and retry |
+| "No credentials found" | The AI provider key is missing or expired - tell your admin |
+| "Rate limit exceeded" | Too many requests to the AI provider - wait a minute and retry |
+| "Model ... is not allowed" | The model you picked is not on the allowed list - run `/model` to see allowed models |
 | "Tool execution denied" | You do not have permission to run that tool |
-| "Gateway unreachable" | The gateway is down — tell your admin |
+| "Gateway unreachable" | The gateway is down - tell your admin |
 
 ## Commands are not working
 
-- Commands only work if you are authorized. Ask your admin if `/status` and other commands have no effect.
-- Make sure commands are sent as **standalone messages** (just `/status`, not "hey /status is this working?"). Inline shortcuts (`/help`, `/status`, `/whoami`, `/commands`) work embedded in a message; most others do not.
+- Commands only work if you are authorised. Ask your admin if `/status` and others have no effect.
+- Send commands as **standalone messages** (just `/status`). Only the inline shortcuts (`/help`, `/status`, `/whoami`, `/commands`) work embedded in a longer message; most others do not.
 
 ## I am not receiving voice messages
 
-TTS must be enabled by your admin. If it is available, enable it:
+Voice (TTS) must be enabled by your admin. If it is available, turn it on:
 
 ```
 /tts always
 ```
 
-## The agent is doing something unexpected
+On Discord, use `/voice` instead.
 
-If the agent is behaving in a way you did not intend:
+## The agent is doing something unexpected
 
 1. Send `/stop` to interrupt the current response.
 2. Send `/reset` to start a fresh session.
-3. If the agent made an action you did not want (ran a command, wrote a file), tell your admin — they can check the session transcript.
+3. If it took an action you did not want (ran a command, wrote a file), tell your admin - they can review the session transcript.
 
 ## I want to change the AI model
 
 ```
-/model claude-3-5-sonnet
-/model gpt-4o
+/model
 ```
 
-Use `/status` to see the current model and `/model` to list available models.
+`/model` on its own shows a picker of the models you are allowed to use. To switch directly, name one:
+
+```
+/model opus
+```
+
+(use an alias your admin set, or a full id like `anthropic/claude-opus-4-6`). `/status` shows the current model.
 
 ## Still stuck?
 
-Send `/status` to your admin so they can see the same information you see. If you can get to the control panel at `http://localhost:18789/`, the Logs tab shows recent activity.
+Send `/status` to your admin so they can see what you see. If you self-host or have access to the control panel, the Logs view shows recent activity.

@@ -1,84 +1,124 @@
 ---
 title: "Available tools"
-description: "What the WednesdayAI agent can do: web search, code execution, file access, browser control, and more."
+description: "What the WednesdayAI agent can do for you: web search, code, files, browser, images, PDFs, memory, scheduling, and device actions."
 audience: user
 ---
 
 # Available tools
 
-WednesdayAI agents can use tools to take actions on your behalf — searching the web, running code, reading and writing files, and more. Tools run automatically when the agent decides they are needed; you don't have to ask explicitly.
+WednesdayAI agents can use **tools** to take actions on your behalf. Tools run automatically - the agent decides when it needs one based on what you ask. You do not have to name a tool, though you can ask for one explicitly.
 
 <Note>
-Which tools are available depends on how your administrator has configured the gateway. Some tools (like shell execution and browser control) require explicit opt-in.
+Which tools are available depends on how your administrator has configured the gateway. Some tools (shell execution, browser control, device actions) require explicit opt-in, and a few need an approval before they run.
 </Note>
 
-## Common tools
+## What the agent can do
 
-### Web search
+### Search the web
 
-The agent can search the web for current information. Just ask naturally:
+Find current information using **Brave Search**.
 
-> "What is the current price of NVDA stock?"
-> "Find the latest Node.js release notes."
+> "What's the current price of NVDA stock?"
 
-Search tools: Brave Search, Perplexity, and others depending on your deployment.
+### Read a web page
 
-### Code execution
+Fetch a URL and pull out the readable content.
 
-The agent can write and run code, showing you the output:
+> "Read this article and give me the three main points: [paste a link]"
 
-> "Write a Python script to parse this CSV and find the top 10 values."
-> "Run this shell command and tell me what the output means."
+### Run code and shell commands
 
-Code execution may require administrator approval depending on your security policy.
+Write and run code in its workspace and show you the output.
 
-### File access
+> "Write a Python script to parse this CSV and find the top 10 values, then run it."
 
-On channels where file tools are enabled, the agent can read and write files on the gateway host:
+<Note>
+Running commands on the gateway *host* (outside the workspace) is a separate, locked-down capability that is off by default.
+</Note>
 
-> "Read my `notes.txt` file and summarise it."
-> "Create a new Markdown file with the outline we just discussed."
+### Read and write files
 
-### Browser
+Work with files in its workspace - read them, edit them, create new ones.
 
-When browser tools are enabled, the agent can navigate websites, fill forms, take screenshots, and extract information:
+> "Create a Markdown file with the outline we just discussed."
 
-> "Go to example.com and extract the pricing table."
-> "Take a screenshot of my dashboard."
+### Control a browser
 
-### Memory
+Open pages, click and type, fill forms, take screenshots, and extract data from sites that need a real browser.
 
-The agent maintains session memory — it remembers what you said earlier in a conversation. For long-running context across sessions, ask the agent to remember something:
+> "Go to example.com and grab the pricing table."
 
-> "Remember that my preferred language is TypeScript."
-> "What did I tell you about my project last week?"
+### Analyse an image
 
-### Cron / scheduling
+Look at a photo or screenshot and describe or interpret it.
 
-Schedule tasks to run at a later time:
+> (attach a photo) "What plant is this, and is it healthy?"
 
-> "Remind me in 2 hours to follow up on the Jenkins build."
-> "Run this command every day at 9am."
+### Analyse a PDF
 
-## How tools work
+Read one or more PDFs (up to 10 at a time) and answer questions or compare them.
 
-Tools run automatically — the agent decides when to use them based on your request. If a tool requires your approval (for example, shell execution with `ask=on`), the agent will pause and ask before running.
+> (attach a report) "Summarise this in five bullet points."
 
-To see what tools are active:
+See [Sharing files](/users/files) for how to send images and PDFs on each channel.
 
-```
-/exec
-```
+### Remember things
 
-To approve a pending tool call:
+Save durable facts and preferences that survive across conversations, and recall them later.
+
+> "Remember that my project deadline is the 14th."
+>
+> "What did I tell you about my deadline?"
+
+See [Memory](/users/memory).
+
+### Schedule tasks and reminders
+
+Set things to run later or on a repeat.
+
+> "Remind me in two hours to follow up on the build."
+>
+> "Every weekday at 9am, give me a summary of overnight emails."
+
+### Message other chats
+
+Send a message into another conversation or channel it has access to, post polls, react, and manage threads.
+
+> "Send a message to the team channel saying the deploy is done."
+
+### Spawn a sub-task
+
+Hand a self-contained job to a background sub-agent and report back when done - useful for longer pieces of work.
+
+> "Spin up a sub-task to research three hosting options and report back."
+
+### Control a paired phone or Mac
+
+If a phone or Mac is paired as a **node**, the agent can take device actions on it: send a notification, run a command, capture a camera photo or a screen recording, or read the device's location.
+
+> "Take a photo with the office Mac's camera."
+
+<Note>
+Device actions need an explicit node to be paired and usually need the device app in the foreground. Camera and screen capture always respect your consent.
+</Note>
+
+## When a tool needs approval
+
+If a tool is configured to ask first (for example shell execution with approvals on), the agent pauses and asks before running. Approve it with:
 
 ```
 /approve <id> allow-once
 ```
 
-## Tool output
+To see the current execution policy, send:
 
-By default, the agent summarises tool results in its reply. To see the full output:
+```
+/exec
+```
+
+## Seeing what a tool did
+
+By default the agent summarises tool results in its reply. To see the full output:
 
 ```
 /verbose on
@@ -90,11 +130,16 @@ Turn it off when you are done:
 /verbose off
 ```
 
-## Requesting specific tools
+<Tip>
+Keep `/verbose` off in group chats - it can reveal tool output you did not mean to share.
+</Tip>
 
-You can ask the agent to use a specific tool or approach:
+## Asking for a specific approach
 
-> "Search the web for this, don't use your training data."
+You can steer which tool or approach the agent uses:
+
+> "Search the web for this - don't rely on your training data."
+>
 > "Use the browser to check that URL for me."
 
-The agent will use the tool if it is available and you have permission.
+The agent will use the tool if it is available and you are permitted.

@@ -1,0 +1,98 @@
+---
+title: "Doctor"
+description: "openclaw doctor — the repair and migration tool: what it checks, how to run it safely in automation, and the config migrations it applies."
+audience: admin
+---
+
+# Doctor
+
+`openclaw doctor` is the repair and migration tool. It validates and normalises config, migrates legacy state, checks gateway, channel, and model-auth health, and offers actionable fixes. Run it after every install, upgrade, or config change.
+
+## Quick start
+
+```bash
+openclaw doctor
+```
+
+Interactive mode prompts before applying anything. To review the current config first:
+
+```bash
+cat ~/.openclaw/openclaw.json
+```
+
+## Modes
+
+| Command | Behaviour |
+| ------- | --------- |
+| `openclaw doctor` | Interactive — prompts before each fix |
+| `openclaw doctor --yes` | Accept default repair prompts without asking (includes restart/service/sandbox steps) |
+| `openclaw doctor --repair` | Apply recommended repairs without prompts (repairs plus safe restarts) |
+| `openclaw doctor --repair --force` | Also apply aggressive repairs (overwrites custom supervisor configs) |
+| `openclaw doctor --non-interactive` | No prompts; only safe migrations (config normalisation plus on-disk state moves) |
+| `openclaw doctor --deep` | Scan system services for extra gateway installs (launchd/systemd/schtasks) |
+
+<Tip>
+Use `--non-interactive` in CI or scripts — it applies only the safe migrations and skips anything that needs human confirmation. Use `--repair` when you want it to actually fix and restart unattended.
+</Tip>
+
+## What it checks
+
+<AccordionGroup>
+  <Accordion title="Config and state">
+    - Config normalisation for legacy value shapes.
+    - Legacy config key migrations (see below) — rewrites `~/.openclaw/openclaw.json` to the current schema.
+    - Legacy on-disk state migration: sessions, transcripts, agent dir, and WhatsApp (Baileys) auth into the per-agent layout.
+    - State integrity and permissions: missing state dir, writability, transcript mismatches, multiple state dirs, cloud-synced state-dir warnings (iCloud), and SD/eMMC-backed state warnings on Linux.
+    - Config file permission check (warns if `~/.openclaw/openclaw.json` is group/world readable; offers to tighten to `600`).
+  </Accordion>
+  <Accordion title="Auth and security">
+    - Model auth health: OAuth expiry, optional refresh of expiring tokens, and auth-profile cooldown/disabled reporting.
+    - Gateway auth warnings when no `gateway.auth.token` is set on a local gateway (offers to generate one; force with `--generate-gateway-token`).
+    - Security warnings for open DM policies without an allowlist.
+    - OpenCode Zen provider override warnings (`models.providers.opencode`).
+  </Accordion>
+  <Accordion title="Gateway and services">
+    - Gateway health check with an offer to restart when unhealthy.
+    - Service installed but not running; cached launchd label issues.
+    - Port collision diagnostics on the default port `18789`.
+    - Supervisor config audit (launchd/systemd/schtasks) with optional repair.
+    - Runtime best-practice checks: warns when the service runs on **Bun** or a version-managed Node path (nvm, fnm, volta, asdf), which can break WhatsApp/Telegram or fail after upgrades; offers to migrate to a system Node install.
+    - systemd linger check on Linux (keeps the gateway alive after logout).
+    - Legacy service migration and extra-gateway detection (profile-named services are first-class, not "extra").
+  </Accordion>
+  <Accordion title="Channels, skills, sandbox, workspace">
+    - Channel status warnings (probed from the running gateway).
+    - Skills status summary (eligible/missing/blocked).
+    - Sandbox image repair when sandboxing is enabled.
+    - Hooks model validation (`hooks.gmail.model`) against the catalog and allowlist.
+    - Workspace tips: suggests a memory system and a git backup when the workspace is not under version control.
+    - Source-install checks: pnpm workspace mismatch, missing UI assets, missing `tsx` binary.
+  </Accordion>
+</AccordionGroup>
+
+## Config migrations
+
+The gateway auto-runs doctor migrations on startup when it detects a legacy config format, so stale configs are usually repaired without manual intervention. Doctor explains which legacy keys it found, shows the migration, and rewrites the file. Current migrations include:
+
+- `routing.allowFrom` to `channels.whatsapp.allowFrom`
+- `routing.groupChat.*` to `channels.*.groups."*".requireMention` / `messages.groupChat.*`
+- `routing.queue` to `messages.queue`
+- `routing.bindings` to top-level `bindings`
+- `routing.agents` / `routing.defaultAgentId` to `agents.list` plus `agents.list[].default`
+- `routing.agentToAgent` to `tools.agentToAgent`
+- `identity` to `agents.list[].identity`
+- `agent.*` to `agents.defaults` plus `tools.*`
+- `agent.model` / `allowedModels` / `modelAliases` / `modelFallbacks` to `agents.defaults.models` plus `agents.defaults.model.primary/fallbacks`
+- `browser.ssrfPolicy.allowPrivateNetwork` to `browser.ssrfPolicy.dangerouslyAllowPrivateNetwork`
+
+<Note>
+WhatsApp auth state is intentionally migrated **only** via `openclaw doctor`, not automatically on startup. If WhatsApp shows as logged out after an upgrade, run doctor.
+</Note>
+
+## After a bad upgrade
+
+If a tool refuses to run and asks you to run doctor, you have a deprecated config key. Run `openclaw doctor` (or `--repair`) to migrate it. If channels stopped working after switching the runtime, check the Bun-vs-Node warning — WhatsApp and Telegram require Node.
+
+---
+
+**Related:** [Upgrading](/admin/upgrading) · [Troubleshooting](/admin/troubleshooting) · [Health checks](/admin/gateway/health-checks) · [Multi-gateway](/admin/multi-gateway)

@@ -1,0 +1,114 @@
+---
+title: "Multi-gateway setup"
+description: "Run more than one WednesdayAI gateway on a single host with isolated config, state, ports, and profiles."
+audience: admin
+---
+
+# Multi-gateway setup
+
+Most deployments should run a **single** gateway. One gateway can handle many channels and many agents at once, so a second instance is rarely needed.
+
+You only need multiple gateways for stronger isolation or redundancy — for example a separate "rescue" bot that can debug or repair the main bot while it is down, or hard trust separation between two boundaries on the same machine.
+
+<Note>
+For mixed-trust or adversarial-user separation, prefer separate OS users or hosts over multiple gateways on one host. See [Security hardening](/admin/security).
+</Note>
+
+## Isolation checklist
+
+Every gateway instance on the same host must have its own:
+
+| Setting | Purpose |
+| ------- | ------- |
+| `OPENCLAW_CONFIG_PATH` | Per-instance config file |
+| `OPENCLAW_STATE_DIR` | Per-instance sessions, credentials, and caches |
+| `agents.defaults.workspace` | Per-instance workspace root |
+| `gateway.port` (or `--port`) | Unique base port |
+| Derived ports (browser, canvas, CDP) | Must not overlap between instances |
+
+If any of these are shared, you will hit config races and port conflicts.
+
+## Recommended: profiles
+
+The `--profile` flag is the simplest path. A profile auto-scopes `OPENCLAW_STATE_DIR` and `OPENCLAW_CONFIG_PATH`, and suffixes the installed service name so each instance gets its own systemd/launchd unit.
+
+<Steps>
+  <Step title="Set up the main gateway">
+    ```bash
+    openclaw --profile main setup
+    openclaw --profile main gateway --port 18789
+    ```
+  </Step>
+  <Step title="Set up a second (rescue) gateway">
+    ```bash
+    openclaw --profile rescue setup
+    openclaw --profile rescue gateway --port 19001
+    ```
+  </Step>
+  <Step title="Install each as a service">
+    ```bash
+    openclaw --profile main gateway install
+    openclaw --profile rescue gateway install
+    ```
+  </Step>
+</Steps>
+
+## Rescue-bot pattern
+
+A rescue bot is a second gateway on the same host with its own profile, config, state directory, workspace, and base port. Keeping it isolated means it can still respond and apply config changes even if the primary bot is wedged.
+
+```bash
+# Main bot (no --profile; runs on 18789 plus derived ports)
+openclaw onboard
+openclaw gateway install
+
+# Rescue bot (isolated profile + ports)
+openclaw --profile rescue onboard
+# - workspace name is suffixed with -rescue by default
+# - pick a clearly separated base port, e.g. 19789
+openclaw --profile rescue gateway install
+```
+
+<Tip>
+Leave at least **20 ports** between base ports so the derived browser, canvas, and CDP ports never collide.
+</Tip>
+
+## Derived ports
+
+The base port is `gateway.port` (or `OPENCLAW_GATEWAY_PORT` / `--port`). Other services derive from it:
+
+- Browser control service port = base + 2 (loopback only)
+- Canvas host is served on the gateway HTTP server (same port as `gateway.port`)
+- Browser profile CDP ports auto-allocate from `browser.controlPort + 9` through `+ 108`
+
+If you override any of these in config or env, keep them unique per instance.
+
+<Warning>
+**Browser/CDP footgun.** Do not pin `browser.cdpUrl` to the same value on multiple instances. Each instance needs its own browser control port and CDP range. For explicit ports, set `browser.profiles.<name>.cdpPort` per instance; for remote Chrome, use `browser.profiles.<name>.cdpUrl` per profile, per instance.
+</Warning>
+
+## Manual environment variables
+
+If you prefer not to use profiles, set the isolation variables explicitly per instance:
+
+```bash
+OPENCLAW_CONFIG_PATH=~/.openclaw/main.json \
+OPENCLAW_STATE_DIR=~/.openclaw-main \
+openclaw gateway --port 18789
+
+OPENCLAW_CONFIG_PATH=~/.openclaw/rescue.json \
+OPENCLAW_STATE_DIR=~/.openclaw-rescue \
+openclaw gateway --port 19001
+```
+
+## Quick checks
+
+```bash
+openclaw --profile main status
+openclaw --profile rescue status
+openclaw --profile rescue browser status
+```
+
+---
+
+**Related:** [Gateway configuration](/admin/gateway/configuration) · [Doctor](/admin/doctor) · [Security hardening](/admin/security)

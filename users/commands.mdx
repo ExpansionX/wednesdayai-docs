@@ -1,113 +1,123 @@
 ---
 title: "Slash commands"
-description: "Control WednesdayAI with slash commands: change models, adjust settings, run tools, and manage sessions."
+description: "Control WednesdayAI with slash commands: change models, adjust settings, manage sessions, and run tools."
 audience: user
 ---
 
 # Slash commands
 
-Commands start with `/` and are sent as standalone messages (or embedded in a message for inline shortcuts). They control the current session — switching models, adjusting reasoning depth, managing context, and more.
+Commands start with `/` and are usually sent as a **standalone message**. They control the current session - switching models, adjusting reasoning depth, managing context, and more.
 
 <Note>
-Commands only work if you are on the allowlist. If a command has no effect, your administrator may need to grant you access.
+Commands only work for **authorised senders** - users on the allowlist or who have paired with the gateway. Unauthorised senders see `/...` tokens treated as plain text. If a command has no effect, ask your administrator to grant you access.
 </Note>
 
-## Most useful commands
+## Commands vs directives
 
-### Session management
+- **Commands** are standalone `/...` messages (`/reset`, `/status`, `/help`).
+- **Directives** (`/think`, `/verbose`, `/reasoning`, `/elevated`, `/exec`, `/model`, `/queue`) can also ride in front of a normal message. A directive on its own line sticks for the session; a directive in front of a real message applies to that message only.
+
+You can put an optional `:` between a command and its argument: `/think: high`, `/send: on`, `/help:`.
+
+## Session management
 
 | Command | Effect |
 | ------- | ------ |
 | `/reset` | Start a fresh conversation (new session) |
-| `/new` | Same as `/reset` |
-| `/new <model>` | Start fresh with a specific model |
+| `/new [model]` | Same as `/reset`, optionally on a specific model |
 | `/compact [instructions]` | Summarise context and continue in a smaller window |
 | `/stop` | Stop the current running response |
-| `/restart` | Restart the agent |
+| `/restart` | Restart the agent (enabled by default) |
 
-### Model and reasoning
+## Model and reasoning
 
 | Command | Effect |
 | ------- | ------ |
-| `/model <name>` | Switch AI model for this session |
-| `/think <level>` | Set reasoning depth: `off`, `low`, `medium`, `high`, `xhigh` |
-| `/verbose on/off` | Show or hide detailed tool output and reasoning |
+| `/model <name>` | Switch AI model for this session (`/model` alone shows a picker) |
+| `/think <level>` | Set reasoning depth: `off` `\|` `minimal` `\|` `low` `\|` `medium` `\|` `high` `\|` `xhigh` `\|` `adaptive` |
+| `/verbose on\|full\|off` | Show or hide detailed tool output |
+| `/reasoning on\|off\|stream` | Show the model's reasoning in a separate message (`stream` = live draft on Telegram) |
 
-`/think` levels and aliases:
-- `/think off` — no extended reasoning
-- `/think medium` — balanced (alias: `/t medium`)
-- `/think high` — deeper reasoning, slower responses
-- `/think xhigh` — maximum reasoning
+`/think` notes:
 
-### Information
+- Send `/think` with no argument to see the current level.
+- `minimal` thinks a little; `high` thinks the hardest; `adaptive` lets the model choose (the default on newer models).
+- `xhigh` is only supported by certain models.
+
+## Information
 
 | Command | Effect |
 | ------- | ------ |
 | `/status` | Gateway status, active model, provider quota |
 | `/help` | List available commands |
-| `/whoami` | Show your sender ID |
-| `/context` | Show how context is being used |
-| `/usage tokens` | Show token count on each reply |
-| `/usage cost` | Summarise cost from session logs |
+| `/commands` | List available commands |
+| `/whoami` (alias `/id`) | Show your sender ID |
+| `/context [list\|detail]` | Show how the context window is being used |
+| `/usage tokens` | Append a token count to each reply |
+| `/usage cost` | Print a local cost summary from session logs |
+| `/usage full` | Append a fuller usage footer |
+| `/usage off` | Turn the usage footer off |
 
-### Tools and execution
-
-| Command | Effect |
-| ------- | ------ |
-| `/exec host=<target> security=<level>` | Configure tool execution policy |
-| `! <command>` | Run a shell command on the gateway host (if enabled) |
-| `/bash <command>` | Same as `! <command>` |
-| `/approve <id> allow-once` | Approve a pending tool execution |
-
-### Voice and output
+## Output and voice
 
 | Command | Effect |
 | ------- | ------ |
 | `/tts always` | Always send audio responses |
 | `/tts off` | Disable audio |
-| `/tts tagged` | Audio only for responses tagged with [voice] |
+| `/tts tagged` | Audio only for responses the model tags for voice |
 
-### Sub-agents and sessions
+<Note>
+On **Discord** the voice command is `/voice`, because Discord reserves `/tts`. Text `/tts` still works in a normal message.
+</Note>
+
+## Groups
+
+| Command | Effect |
+| ------- | ------ |
+| `/activation mention` | Bot replies only when mentioned or pinged (default) |
+| `/activation always` | Bot considers every message (and replies only when useful) |
+
+`/activation` is owner-only and applies to the current group's session.
+
+## Sub-agents and other sessions
 
 | Command | Effect |
 | ------- | ------ |
 | `/subagents list` | Show running sub-agents |
-| `/kill <id>` | Stop a specific sub-agent |
-| `/steer <id> <message>` | Send a steering message to a running sub-agent |
+| `/kill <id\|#\|all>` | Stop one or all running sub-agents |
+| `/steer <id\|#> <message>` | Steer a running sub-agent (alias `/tell`) |
+| `/queue <mode>` | Control how rapid follow-up messages are handled |
 
-### Skills
+## Tools and execution
+
+| Command | Effect |
+| ------- | ------ |
+| `/exec host=<target> security=<level>` | Show or set the tool execution policy (`/exec` alone shows current) |
+| `/approve <id> allow-once\|allow-always\|deny` | Resolve a pending tool approval |
+| `/elevated on\|off\|ask\|full` | Control elevated (host) execution, when allowed |
+
+<Warning>
+`! <command>` and its alias `/bash <command>` run a shell command on the gateway host. They are **disabled by default** and require explicit administrator opt-in plus an allowlist. On most deployments they will do nothing.
+</Warning>
+
+## Skills
 
 | Command | Effect |
 | ------- | ------ |
 | `/skill <name> [input]` | Run a named skill |
 
-Skills are extensions — additional capabilities your admin has installed. Available skills vary by deployment.
-
-## Directives in messages
-
-Directives are commands embedded in a normal message. They are stripped before the AI sees the message and adjust the session settings:
-
-```
-/think high /verbose on
-Analyse this Python script and suggest improvements.
-```
-
-In a message with content, directives apply to that message only. In a directive-only message, they persist for the session.
+Skills are extra capabilities your admin has installed. Available skills vary by deployment, and many show up as their own native commands too.
 
 ## Inline shortcuts
 
-These commands work when embedded in a message and are stripped before the AI sees the rest:
+A handful of commands work when embedded in a normal message and are stripped before the AI sees the rest:
 
-- `/help` — trigger a help reply; rest of message continues normally
-- `/status` — trigger a status reply
-- `/whoami` — show your sender ID
-- `/commands` — list available commands
+- `/help`, `/commands`, `/status`, `/whoami` (`/id`)
 
-Example: `Hey /status and what's the weather in Sydney today?`
+Example: `Hey /status, and what's the weather in Sydney today?`
 
 ## Notes
 
-- Commands and directives only work for **authorized senders** — users on the allowlist or who have paired with the gateway.
-- Unauthorized users see `/...` tokens treated as plain text.
-- Most commands also work as native commands on Discord and Telegram (tap the `/` button in the chat UI).
-- `/verbose` and `/reasoning` can expose internal tool output — keep them off in shared group chats.
+- On **Discord** and **Telegram**, most commands also appear as native commands - type `/` in the chat to see them.
+- `/verbose` and `/reasoning` can expose internal tool output and reasoning - keep them **off** in shared group chats.
+- Command-only messages from authorised senders are handled immediately (they bypass the queue and the model) and bypass group mention gating.

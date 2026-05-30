@@ -1,0 +1,160 @@
+---
+title: "Microsoft Teams"
+description: "Connect WednesdayAI to Microsoft Teams via an Azure Bot and the Teams plugin — credentials, manifest, RSC vs Graph permissions, and access policies."
+audience: admin
+---
+
+# Microsoft Teams
+
+WednesdayAI connects to Microsoft Teams through the Bot Framework. Teams ships as a **plugin** — it is not bundled with the core install — and requires an Azure Bot registration plus a Teams app package.
+
+<Warning>
+Teams setup is the most involved of all channels: Azure Bot, app manifest, RSC permissions, and (for channel media/history) Microsoft Graph admin consent. Budget time for it.
+</Warning>
+
+## Install the plugin
+
+```bash
+openclaw plugins install @openclaw/msteams
+```
+
+From a local git checkout:
+
+```bash
+openclaw plugins install ./extensions/msteams
+```
+
+If you choose Teams during onboarding and a git checkout is detected, WednesdayAI offers the local install path automatically.
+
+## Setup overview
+
+<Steps>
+  <Step title="Create an Azure Bot">
+    At [Create Azure Bot](https://portal.azure.com/#create/Microsoft.AzureBot), use **Single Tenant** (new multi-tenant bots were deprecated after 2025-07-31) and **Create new Microsoft App ID**. From the resource, collect the **App ID**, a client secret (**App password**), and the **Directory (tenant) ID**.
+  </Step>
+  <Step title="Set the messaging endpoint">
+    In the Azure Bot **Configuration**, set the messaging endpoint to your webhook URL, e.g. `https://your-domain.com/api/messages`. For local dev, tunnel port 3978 (see below). Then enable the **Microsoft Teams** channel under **Channels**.
+  </Step>
+  <Step title="Build and upload a Teams app package">
+    Reference the bot in a Teams app manifest with scopes `personal`, `team`, `groupChat`, `supportsFiles: true`, the RSC permissions below, and 32x32 / 192x192 icons. The [Teams Developer Portal](https://dev.teams.microsoft.com/apps) can generate the package for you.
+  </Step>
+  <Step title="Configure WednesdayAI">
+    ```json5
+    {
+      channels: {
+        msteams: {
+          enabled: true,
+          appId: "<APP_ID>",
+          appPassword: "<APP_PASSWORD>",
+          tenantId: "<TENANT_ID>",
+          webhook: { port: 3978, path: "/api/messages" },
+        },
+      },
+    }
+    ```
+
+    Or via env: `MSTEAMS_APP_ID`, `MSTEAMS_APP_PASSWORD`, `MSTEAMS_TENANT_ID`.
+  </Step>
+  <Step title="Start the gateway">
+    The Teams channel starts automatically once the plugin is installed and credentials are present. Verify with Azure **Test in Web Chat** before testing in Teams.
+  </Step>
+</Steps>
+
+## Local development tunnel
+
+Teams cannot reach `localhost`. Use a tunnel:
+
+```bash
+ngrok http 3978
+# set the messaging endpoint to https://<id>.ngrok.io/api/messages
+```
+
+Tailscale Funnel also works (`tailscale funnel 3978`).
+
+## Access control
+
+```json5
+{
+  channels: {
+    msteams: {
+      dmPolicy: "pairing",            // pairing | allowlist | open | disabled
+      allowFrom: ["40a1a0ed-4ff2-4164-a219-55518990c197"], // AAD object IDs
+      groupPolicy: "allowlist",       // group chats/channels blocked unless allowlisted
+      groupAllowFrom: ["user@org.com"],
+      teams: {
+        "My Team": {
+          channels: {
+            General: { requireMention: true },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+<Note>
+Use **stable AAD object IDs** in `allowFrom`. UPNs and display names are mutable, so name matching is disabled by default — re-enable it only via the break-glass `channels.msteams.dangerouslyAllowNameMatching: true`. The configure wizard resolves names to IDs via Graph when permissions allow.
+</Note>
+
+Group chats are blocked by default (`groupPolicy: "allowlist"` with no allowlist). Set `groupAllowFrom`, or use `groupPolicy: "open"` (still mention-gated). Channels are mention-gated by default; override per team/channel with `requireMention`.
+
+## RSC vs Graph permissions
+
+Teams Resource-Specific Consent (RSC) permissions go in the app manifest and cover real-time text. Microsoft Graph **Application** permissions (with tenant admin consent) are needed for channel/group media and message history.
+
+| Capability | RSC only | RSC + Graph |
+| ---------- | -------- | ----------- |
+| Channel message **text** (read/send) | Yes | Yes |
+| DM file attachments | Yes | Yes |
+| Channel/group **image and file contents** | No (HTML stub only) | Yes |
+| Message **history** | No (live webhook only) | Yes |
+
+Minimum RSC permissions in the manifest: `ChannelMessage.Read.Group`, `ChannelMessage.Send.Group`, `Member.Read.Group`, `ChatMessage.Read.Chat`. For channel media and history, add Graph `ChannelMessage.Read.All` and `Chat.Read.All` (or `ChatMessage.Read.All`) and grant admin consent. After any permission change, bump the manifest version, re-upload, reinstall in the team, and fully quit and relaunch Teams.
+
+## Sending files in group chats
+
+DMs use the FileConsentCard flow out of the box. Group chats and channels require a SharePoint upload (bots have no personal OneDrive). Add Graph `Sites.ReadWrite.All` (and optionally `Chat.Read.All` for per-user sharing links), grant admin consent, fetch your SharePoint site ID, then set `channels.msteams.sharePointSiteId`. Inline images work everywhere without SharePoint.
+
+## Target formats
+
+| Target | Format | Example |
+| ------ | ------ | ------- |
+| User by ID | `user:<aad-object-id>` | `user:40a1a0ed-...` |
+| User by name | `user:<display-name>` | `user:John Smith` (requires Graph) |
+| Group/channel | `conversation:<conversation-id>` | `conversation:19:abc...@thread.tacv2` |
+
+```bash
+openclaw message send --channel msteams --target "conversation:19:abc...@thread.tacv2" --message "Hello"
+```
+
+Teams also supports polls and arbitrary Adaptive Cards via the `card` parameter.
+
+## Reply style
+
+Teams has two channel UI styles that share one data model, and the API does not expose which a channel uses. Set `channels.msteams.replyStyle` (`thread` for classic Posts, `top-level` for Slack-like Threads), with per-team and per-channel overrides under `channels.msteams.teams.<id>...`.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No responses in a channel">
+    Mentions are required by default. Set `channels.msteams.requireMention: false` or configure it per team/channel.
+  </Accordion>
+  <Accordion title="Images not showing in channels">
+    Graph permissions or admin consent are missing. Add the Graph permissions, grant consent, reinstall the app, and fully quit/relaunch Teams.
+  </Accordion>
+  <Accordion title="401 Unauthorized from the webhook">
+    Expected when testing manually without an Azure JWT — it means the endpoint is reachable but auth failed. Use Azure Web Chat to test properly.
+  </Accordion>
+  <Accordion title="Teams still shows the old manifest">
+    Remove and re-add the app, then fully quit Teams (not just close the window) to clear cached metadata.
+  </Accordion>
+  <Accordion title="Webhook timeouts / duplicate replies">
+    Teams retries slow webhooks. WednesdayAI returns quickly and replies proactively, but very slow model responses can still cause retries.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Channel setup](/admin/channels)
+- [Channel troubleshooting](/admin/troubleshooting)

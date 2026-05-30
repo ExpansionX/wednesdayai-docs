@@ -1,0 +1,65 @@
+---
+title: "OpenRouter"
+description: "Access 200+ models from a single OpenRouter API key — unified billing and automatic fallback."
+audience: admin
+---
+
+# OpenRouter
+
+[OpenRouter](https://openrouter.ai) is a unified API gateway that gives WednesdayAI access to hundreds of models from Anthropic, OpenAI, Google, Mistral, Meta, and others — all from one API key.
+
+## When to use it
+
+- Experiment with many models without managing separate keys
+- Unified billing across providers
+- Access to models not available in your region
+
+## Authentication
+
+Create a key at [openrouter.ai/keys](https://openrouter.ai/keys), then onboard, or set it on the gateway host:
+
+```bash
+echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> ~/.openclaw/.env
+```
+
+## Selecting a model
+
+OpenRouter model references are prefixed with `openrouter/` and keep the upstream `provider/model` path:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "openrouter/anthropic/claude-sonnet-4-5" },
+    },
+  },
+}
+```
+
+| Model | Reference |
+| ----- | --------- |
+| Claude Sonnet 4.5 | `openrouter/anthropic/claude-sonnet-4-5` |
+| Claude Opus 4.6 | `openrouter/anthropic/claude-opus-4-6` |
+| Gemini 2.0 Flash | `openrouter/google/gemini-2.0-flash-001` |
+| Llama 3.3 70B | `openrouter/meta-llama/llama-3.3-70b-instruct` |
+| DeepSeek R1 | `openrouter/deepseek/deepseek-r1` |
+
+<Note>
+When typing `/model` in chat with an OpenRouter reference, include the full `openrouter/` prefix — the reference is parsed by splitting on the first `/`, so the provider prefix is required for IDs that themselves contain `/`.
+</Note>
+
+Run `openclaw models status` to list models your key can access. WednesdayAI can also scan OpenRouter's free-model catalog with `openclaw models scan`.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    The key is invalid. Re-run onboarding with a fresh key from [openrouter.ai/keys](https://openrouter.ai/keys).
+  </Accordion>
+  <Accordion title="Model not available">
+    Not all models are available on all tiers. Check [openrouter.ai/models](https://openrouter.ai/models) for your key's access.
+  </Accordion>
+  <Accordion title="Higher latency than a direct provider">
+    OpenRouter adds a routing hop. Use it for experimentation; connect directly for latency-sensitive production.
+  </Accordion>
+</AccordionGroup>

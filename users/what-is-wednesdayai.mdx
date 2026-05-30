@@ -6,17 +6,20 @@ audience: user
 
 # What is WednesdayAI?
 
-WednesdayAI is a **self-hosted AI gateway**. It runs on your own machine (or a server you control) and connects your favorite messaging apps — WhatsApp, Telegram, iMessage, Signal, Slack, Discord, and more — to AI agents.
+WednesdayAI is a **self-hosted AI gateway**. It runs on your own machine (or a server you control) and connects the messaging apps you already use - WhatsApp, Telegram, iMessage, Signal, Slack, Discord, and more - to AI agents.
 
 You message it the same way you message anyone else. WednesdayAI handles the rest: routing your message to an AI model, running any tools the agent needs, and sending a reply back to you.
 
 ## What can it do?
 
-- **Chat with AI** from any messaging app you already use — no new app to install
-- **Use tools** — the agent can run code, search the web, read and write files, control a browser, and more
-- **Remember context** across a conversation — sessions persist so the agent knows what you were working on
-- **Run on your own hardware** — your data stays on your machine, your rules
-- **Work across multiple channels** at once — the same agent responds whether you message it on WhatsApp or Telegram
+- **Chat with AI** from any messaging app you already use - no new app to install
+- **Use tools** - the agent can search the web, run code, read and write files, control a browser, analyse images and PDFs, and more
+- **Remember things across conversations** - ask it to remember a fact or preference and it writes it to durable [memory](/users/memory) that survives new sessions
+- **Schedule tasks and reminders** - "remind me in two hours" or "every morning at 9, summarise my inbox"
+- **Share files, photos and voice notes** - send it a document or image and ask questions about it
+- **Speak back to you** - on supported channels it can reply with voice
+- **Run on your own hardware** - your data stays on your machine, your rules
+- **Work across multiple channels** at once - the same agent responds whether you message it on WhatsApp or Telegram
 
 ## How it works
 
@@ -27,17 +30,19 @@ Your messages travel through a single **gateway** process that your administrato
 3. Runs any tool calls the agent makes
 4. Sends the reply back to you
 
-The gateway is the single source of truth for conversations, sessions, and channel connections. You never have to think about it — it just works.
+The gateway is the single source of truth for conversations, sessions, and channel connections. You never have to think about it - it just works.
 
 ## What do you need?
 
 As a user, nothing special. You need:
 
 - An account on a supported messaging platform (WhatsApp, Telegram, etc.)
-- To be paired with the gateway by your admin (or yourself, if you're self-hosting)
-- That's it — the AI is ready to use via the channel you already have
+- To be paired with the gateway by your admin (or yourself, if you are self-hosting)
+- That is it - the AI is ready to use via the channel you already have
 
-If you're setting up WednesdayAI for yourself, start with [Getting started](/admin/getting-started) in the Administrators section.
+<Note>
+If you are setting up WednesdayAI for yourself, start with [Getting started](/admin/getting-started) in the Administrators section.
+</Note>
 
 ## Next steps
 
@@ -49,9 +54,15 @@ If you're setting up WednesdayAI for yourself, start with [Getting started](/adm
     How to have a conversation, reset context, and get status.
   </Card>
   <Card title="Slash commands" href="/users/commands" icon="terminal">
-    Control the AI with /commands — change models, adjust settings, run tools.
+    Control the AI with /commands - change models, adjust settings, run tools.
   </Card>
-  <Card title="Available tools" href="/users/tools" icon="wrench">
-    What the agent can do for you: web search, code execution, file access, and more.
+  <Card title="Available tools" href="/users/tools/index" icon="wrench">
+    What the agent can do for you: web search, code, files, browser, and more.
+  </Card>
+  <Card title="Memory" href="/users/memory" icon="brain">
+    Make the AI remember facts and preferences across conversations.
+  </Card>
+  <Card title="Sharing files" href="/users/files" icon="paperclip">
+    Send documents, images, and voice notes for the AI to work with.
   </Card>
 </CardGroup>

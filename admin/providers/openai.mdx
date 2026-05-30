@@ -1,0 +1,88 @@
+---
+title: "OpenAI"
+description: "Connect WednesdayAI to GPT and Codex models via API key or Codex subscription OAuth."
+audience: admin
+---
+
+# OpenAI
+
+WednesdayAI supports OpenAI's GPT and Codex model families. Authenticate with an API key, or with OAuth for Codex subscribers.
+
+## API key
+
+Create a key at [platform.openai.com](https://platform.openai.com) and onboard:
+
+```bash
+openclaw onboard --auth-choice openai-api-key
+```
+
+Or set the key on the gateway host:
+
+```bash
+echo 'OPENAI_API_KEY=sk-proj-...' >> ~/.openclaw/.env
+```
+
+Rotation variables (`OPENAI_API_KEYS`, `OPENAI_API_KEY_1`, `OPENAI_API_KEY_2`, and the single-override `OPENCLAW_LIVE_OPENAI_KEY`) are also honoured — see [Authentication](/admin/gateway/authentication).
+
+## Codex subscription (OAuth)
+
+OpenAI Codex OAuth is explicitly supported for external tools like WednesdayAI:
+
+```bash
+openclaw onboard --auth-choice openai-codex
+# or
+openclaw models auth login --provider openai-codex
+```
+
+This opens a browser for the OAuth flow and stores the token in the auth profile store.
+
+## Selecting a model
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "openai/gpt-5.1-codex" },
+    },
+  },
+}
+```
+
+The Codex subscription provider uses the `openai-codex/` prefix, e.g. `openai-codex/gpt-5.3-codex`. Run `openclaw models list --all` to see the full catalog, or `openclaw models status` for what your auth can reach.
+
+## Transport
+
+The default transport is `auto` (WebSocket-first, with SSE fallback). Override per model:
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "openai/gpt-5.1-codex": {
+          params: { transport: "sse" }, // "sse" | "websocket" | "auto"
+        },
+      },
+    },
+  },
+}
+```
+
+The OpenAI Responses WebSocket warm-up defaults to on via `params.openaiWsWarmup`.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    The API key is invalid or revoked. Generate a new one and re-run onboarding, or update `~/.openclaw/.env`.
+  </Accordion>
+  <Accordion title="429 Rate limited">
+    You hit your tier limits. Add rotation keys via `OPENAI_API_KEYS` or upgrade your plan.
+  </Accordion>
+  <Accordion title="Codex OAuth session expired">
+    Re-run `openclaw models auth login --provider openai-codex`.
+  </Accordion>
+  <Accordion title="Model not available on this key">
+    Some models require specific access tiers. Check your access at [platform.openai.com/limits](https://platform.openai.com/limits).
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,68 @@
+---
+title: "Google"
+description: "Connect WednesdayAI to Gemini via an AI Studio API key or a Vertex AI service account."
+audience: admin
+---
+
+# Google
+
+WednesdayAI supports Google's Gemini family. Authenticate with an AI Studio API key (easiest) or Vertex AI (for GCP-native deployments).
+
+## AI Studio API key
+
+Create a key at [aistudio.google.com](https://aistudio.google.com) and onboard:
+
+```bash
+openclaw onboard --auth-choice gemini-api-key
+```
+
+Or set the key on the gateway host:
+
+```bash
+echo 'GEMINI_API_KEY=AIza...' >> ~/.openclaw/.env
+```
+
+Rotation variables (`GEMINI_API_KEYS`, `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2`) are honoured, and the bare `GOOGLE_API_KEY` is included as a fallback.
+
+## Vertex AI
+
+For production GCP deployments, use Application Default Credentials (gcloud ADC) via the `google-vertex` provider:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+export GOOGLE_CLOUD_PROJECT=my-project-id
+```
+
+The service account needs the **Vertex AI User** (`roles/aiplatform.user`) role.
+
+## Selecting a model
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "google/gemini-3-pro-preview" },
+    },
+  },
+}
+```
+
+Use the `google/` prefix for AI Studio and `google-vertex/` for Vertex. Run `openclaw models list --all` for the catalog and `openclaw models status` for what your auth can reach.
+
+<Note>
+WednesdayAI also bundles `google-antigravity` and `google-gemini-cli` OAuth providers as disabled plugins. These are **unofficial** integrations — some users have reported Google account restrictions after using third-party clients. Review Google's terms and use a non-critical account if you enable them.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="API key rejected">
+    Ensure the key was created in AI Studio and that the Generative Language API is enabled for the project.
+  </Accordion>
+  <Accordion title="Vertex AI permission denied">
+    The service account is missing the **Vertex AI User** role. Add it in IAM and Admin.
+  </Accordion>
+  <Accordion title="Model not found">
+    Not all Gemini models are available in all regions. On Vertex, try a different region or check the Vertex AI model availability table.
+  </Accordion>
+</AccordionGroup>

@@ -9,9 +9,9 @@ audience: developer
 
 The WednesdayAI gateway exposes:
 
-1. **WebSocket control plane** — all clients (CLI, web UI, mobile apps) connect here
-2. **HTTP tools endpoint** — invoke agent tools directly without a full agent run
-3. **OpenAI-compatible chat completions** — drop-in for tools expecting OpenAI API format
+1. **WebSocket control plane** - all clients (CLI, web UI, mobile apps, nodes) connect here
+2. **HTTP tools endpoint** - invoke agent tools directly without a full agent run
+3. **OpenAI-compatible endpoints** - `POST /v1/chat/completions` and `POST /v1/responses`
 
 All endpoints share the same port (`18789` by default) via HTTP/WebSocket multiplexing.
 
@@ -23,9 +23,10 @@ All endpoints use the gateway auth configuration:
 | --------- | ------------------- |
 | `token` (default) | `Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>` |
 | `password` | `Authorization: Bearer <OPENCLAW_GATEWAY_PASSWORD>` |
-| `trusted-proxy` | Delegated to upstream proxy via `x-forwarded-user` header |
+| `trusted-proxy` | Delegated to upstream proxy via the configured user header |
+| `none` | No auth (loopback-only setups) |
 
-Too many failed auth attempts returns HTTP `429` with a `Retry-After` header.
+Too many failed auth attempts returns HTTP `429` with a `Retry-After` header (tunable via `gateway.auth.rateLimit`).
 
 ---
 
@@ -39,7 +40,7 @@ The WebSocket control plane is the primary integration surface. All CLI commands
 
 The gateway sends a challenge before accepting the connection:
 
-**Gateway → Client (challenge):**
+**Gateway -> Client (challenge):**
 ```json
 {
   "type": "event",
@@ -48,7 +49,7 @@ The gateway sends a challenge before accepting the connection:
 }
 ```
 
-**Client → Gateway (connect request):**
+**Client -> Gateway (connect request):**
 ```json
 {
   "type": "req",
@@ -57,25 +58,16 @@ The gateway sends a challenge before accepting the connection:
   "params": {
     "minProtocol": 3,
     "maxProtocol": 3,
-    "client": {
-      "id": "my-client",
-      "version": "1.0.0",
-      "platform": "linux",
-      "mode": "operator"
-    },
+    "client": { "id": "my-client", "version": "1.0.0", "platform": "linux", "mode": "operator" },
     "role": "operator",
     "scopes": ["operator.read", "operator.write"],
-    "caps": [],
-    "commands": [],
-    "permissions": {},
     "auth": { "token": "your-gateway-token" },
-    "locale": "en-US",
-    "userAgent": "my-client/1.0.0"
+    "locale": "en-US"
   }
 }
 ```
 
-**Gateway → Client (success):**
+**Gateway -> Client (success):**
 ```json
 {
   "type": "res",
@@ -85,123 +77,153 @@ The gateway sends a challenge before accepting the connection:
     "type": "hello-ok",
     "protocol": 3,
     "policy": { "tickIntervalMs": 15000 },
-    "auth": {
-      "deviceToken": "...",
-      "role": "operator",
-      "scopes": ["operator.read", "operator.write"]
-    }
+    "auth": { "deviceToken": "...", "role": "operator", "scopes": ["operator.read", "operator.write"] }
   }
 }
 ```
 
-The `deviceToken` in the response can be saved and used for subsequent connections — pass it as `auth.token` to skip full re-authentication.
+The `deviceToken` in the response can be saved and passed as `auth.token` on subsequent connections to skip full re-authentication. The protocol version is currently **3**.
 
 ### Request/response pattern
 
-After handshake, all communication uses `type: "req"` with an `id` for correlation, and `type: "res"` responses:
+After handshake, all communication uses `type: "req"` with an `id` for correlation and `type: "res"` responses:
 
 ```json
-{
-  "type": "req",
-  "id": "req-2",
-  "method": "sessions.list",
-  "params": {}
-}
+{ "type": "req", "id": "req-2", "method": "sessions.list", "params": {} }
 ```
-
 ```json
-{
-  "type": "res",
-  "id": "req-2",
-  "ok": true,
-  "payload": { "sessions": [...] }
-}
+{ "type": "res", "id": "req-2", "ok": true, "payload": { "sessions": [] } }
 ```
 
 On error, `ok` is `false` and `error` is set:
 ```json
-{
-  "type": "res",
-  "id": "req-2",
-  "ok": false,
-  "error": { "code": "NOT_FOUND", "message": "Session not found" }
-}
+{ "type": "res", "id": "req-2", "ok": false, "error": { "code": "NOT_FOUND", "message": "Session not found" } }
 ```
 
-### Key RPC methods
+### RPC methods
 
-| Method | Description |
-| ------ | ----------- |
-| `connect` | Handshake — must be the first call |
-| `config.get` | Read current gateway config |
-| `config.apply` | Full config replace (validates, writes, and restarts) |
-| `config.patch` | Partial config update (JSON merge patch) |
-| `sessions.list` | List active sessions |
-| `sessions.get` | Get session details |
-| `sessions.clear` | Clear session history |
-| `gateway.status` | Gateway health snapshot |
-| `gateway.call` | Invoke an RPC method by name |
-| `logs.tail` | Tail the gateway log file |
-| `health.probe` | Full health probe |
-| `channels.status` | Per-channel connectivity status |
-| `tools.invoke` | Invoke a tool (same as HTTP endpoint) |
+<Note>
+The table below is **not exhaustive**. The gateway registers dozens of methods and plugins can add more. To enumerate or call any method from the CLI, use `openclaw gateway call <method> --params '<json>'`. There is no public "list methods" RPC - the authoritative surface is the gateway source and the `gateway call` helper.
+</Note>
+
+Common methods, grouped by namespace:
+
+| Namespace | Methods |
+| --------- | ------- |
+| Handshake | `connect` (must be first) |
+| Config | `config.get`, `config.set`, `config.patch`, `config.apply`, `config.schema` |
+| Sessions | `sessions.list`, `sessions.preview`, `sessions.resolve`, `sessions.patch`, `sessions.reset`, `sessions.delete`, `sessions.compact`, `sessions.usage` |
+| Chat | `chat.send`, `chat.history`, `chat.inject`, `chat.abort` |
+| Channels | `channels.status`, `channels.logout` |
+| Logs / health | `logs.tail`, `usage.status`, `usage.cost` |
+| Cron | `cron.list`, `cron.status`, `cron.add`, `cron.update`, `cron.remove`, `cron.run`, `cron.runs` |
+| System / update | `update.run` |
+| Pairing (devices) | `device.pair.list`, `device.pair.approve`, `device.pair.reject`, `device.pair.remove`, `device.token.rotate`, `device.token.revoke` |
+| Nodes | `node.list`, `node.describe`, `node.invoke`, `node.event`, `node.rename`, `node.pair.list`, `node.pair.approve`, `node.pair.reject`, `node.pair.request`, `node.pair.verify` |
+| Models | `models.list` |
+| Memory | `doctor.memory.status` |
+| Browser | `browser.request` |
+| Approvals | `exec.approvals.get`, `exec.approvals.set`, `exec.approval.request`, `exec.approval.resolve` |
+| Secrets | `secrets.reload`, `secrets.resolve` |
+| Skills | `skills.status`, `skills.install`, `skills.update`, `skills.bins` |
+| Voice / TTS | `tts.status`, `tts.enable`, `tts.disable`, `tts.providers`, `tts.setProvider`, `tts.convert`, `talk.config`, `talk.mode` |
+| Wizard | `wizard.start`, `wizard.next`, `wizard.status`, `wizard.cancel` |
+
+<Note>
+`openclaw gateway status`, `openclaw gateway health`, and `openclaw gateway probe` are CLI helpers that establish a connection and read the handshake/health payload - they are not single RPC method names. Likewise `tools.invoke` is exposed over HTTP (`POST /tools/invoke`), not as a control-plane method.
+</Note>
 
 ### Config RPC rate limiting
 
-`config.apply` and `config.patch` are rate-limited to **3 requests per 60 seconds** per `deviceId+clientIp`. When limited, returns `UNAVAILABLE` with `retryAfterMs`.
-
-`config.apply` and `config.patch` require a `baseHash` (the current config hash from `config.get`) to prevent concurrent conflicting writes. Restarts are coalesced with a 30-second cooldown.
+`config.apply` and `config.patch` are rate-limited to **3 requests per 60 seconds** per `deviceId+clientIp`. When limited, the call returns `UNAVAILABLE` with `retryAfterMs`. Both require a `baseHash` (from `config.get`) to prevent concurrent conflicting writes. Restarts are coalesced with a 30-second cooldown.
 
 ---
 
 ## HTTP: Tool invocation
 
-`POST /tools/invoke` — invoke a single agent tool directly. Always enabled; gated by gateway auth and tool policy.
+`POST /tools/invoke` - invoke a single agent tool directly. Always enabled; gated by gateway auth and tool policy.
 
 **Maximum payload size:** 2 MB
 
-**Request:**
 ```bash
 curl -X POST http://localhost:18789/tools/invoke \
   -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "tool": "sessions_list",
-    "args": {},
-    "sessionKey": "main"
-  }'
+  -d '{ "tool": "sessions_list", "args": {}, "sessionKey": "main" }'
 ```
-
-**Request fields:**
 
 | Field | Type | Required | Description |
 | ----- | ---- | -------- | ----------- |
 | `tool` | string | Yes | Tool name to invoke |
-| `action` | string | No | Shorthand mapped into args if tool supports `action` |
+| `action` | string | No | Shorthand mapped into args if the tool supports `action` |
 | `args` | object | No | Tool-specific arguments |
-| `sessionKey` | string | No | Target session key. Defaults to main session |
-| `dryRun` | boolean | No | Reserved — currently ignored |
+| `sessionKey` | string | No | Target session key (defaults to main session) |
 
-**Tool availability** is filtered through the agent tool policy chain:
-- `tools.profile` / `tools.allow` in global config
-- `agents.<id>.tools.allow` for per-agent policy
-- Group/channel policies for session-routed tools
-
-If a tool is not allowed by policy, the endpoint returns **HTTP 404**.
+Tool availability is filtered through the tool policy chain (`tools.*`, `agents.<id>.tools.*`, and the HTTP-specific `gateway.tools.deny`/`gateway.tools.allow` overrides). If a tool is not allowed, the endpoint returns **HTTP 404**.
 
 ---
 
-## HTTP: OpenAI-compatible chat completions
+## HTTP: OpenAI-compatible Chat Completions
 
-`POST /v1/chat/completions` — drop-in replacement for the OpenAI Chat Completions API. Runs a full gateway agent turn.
+`POST /v1/chat/completions` - drop-in replacement for the OpenAI Chat Completions API. Runs a full gateway agent turn.
 
-**Disabled by default.** Enable in config:
+**Disabled by default.** Enable with `gateway.http.endpoints.chatCompletions.enabled: true`.
+
+```bash
+curl -X POST http://localhost:18789/v1/chat/completions \
+  -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openclaw:main",
+    "messages": [ { "role": "user", "content": "What is the current time?" } ],
+    "stream": false
+  }'
+```
+
+Target a specific agent via the model string (`openclaw:<agentId>`) or headers:
+```
+x-openclaw-agent-id: main
+x-openclaw-session-key: agent:main:whatsapp:dm:+15555550123
+```
+
+Tool calls, streaming (`stream: true`), and multi-turn conversations are supported.
+
+---
+
+## HTTP: OpenAI-compatible Responses
+
+`POST /v1/responses` - implements the OpenAI **Responses** API shape. Runs a full gateway agent turn and supports URL/file/image inputs.
+
+**Disabled by default.** Enable with `gateway.http.endpoints.responses.enabled: true`.
+
+```bash
+curl -X POST http://localhost:18789/v1/responses \
+  -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openclaw:main",
+    "input": "Summarise https://example.com/report.pdf"
+  }'
+```
+
+URL-input fetching is hardened via config. Set allowlists and limits before enabling URL fetch:
+
 ```json5
 {
   gateway: {
     http: {
       endpoints: {
-        chatCompletions: { enabled: true },
+        responses: {
+          enabled: true,
+          maxUrlParts: 16,
+          files: {
+            allowUrl: true,
+            urlAllowlist: ["https://example.com"],
+            maxBytes: 10485760,
+            pdf: { maxPages: 50, minTextChars: 16 },
+          },
+          images: { allowUrl: true, urlAllowlist: ["https://example.com"], maxBytes: 10485760 },
+        },
       },
     },
   },
@@ -209,39 +231,28 @@ If a tool is not allowed by policy, the endpoint returns **HTTP 404**.
 ```
 
 <Warning>
-This endpoint has **full operator-access** to the gateway. A valid token here is equivalent to owner/operator credentials. Keep it on loopback or a private network — do not expose it to the public internet.
+Both `/v1/chat/completions` and `/v1/responses` have **full operator access** to the gateway. A valid token here is equivalent to owner/operator credentials. Keep them on loopback or a private network - do not expose them to the public internet.
 </Warning>
 
-**Request:**
-```bash
-curl -X POST http://localhost:18789/v1/chat/completions \
-  -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "openclaw:main",
-    "messages": [
-      { "role": "user", "content": "What is the current time?" }
-    ],
-    "stream": false
-  }'
-```
+---
 
-**Targeting a specific agent:**
+## Control-UI HTTP surface and security headers
 
-```json
+When `gateway.controlUi.enabled` is true, the gateway also serves the control panel and its assets over HTTP on the same port. Browser access is gated by the same auth modes plus device authorisation and origin checks (`gateway.controlUi.allowedOrigins`).
+
+For HTTPS deployments behind a reverse proxy you control, add HSTS:
+
+```json5
 {
-  "model": "openclaw:main",  // openclaw:<agentId>
-  ...
+  gateway: {
+    http: {
+      securityHeaders: { strictTransportSecurity: "max-age=63072000; includeSubDomains" },
+    },
+  },
 }
 ```
 
-Or via header:
-```
-x-openclaw-agent-id: main
-x-openclaw-session-key: agent:main:whatsapp:dm:+15555550123
-```
-
-**Response** follows the OpenAI Chat Completions response format. Tool calls, streaming (`stream: true`), and multi-turn conversations are supported.
+Set `strictTransportSecurity: false` to omit the header. See [Trusted proxy auth](/admin/gateway/remote-access) for TLS termination guidance.
 
 ---
 
@@ -256,22 +267,21 @@ Nodes (iOS, Android, macOS app in node mode) connect with `role: "node"` and adv
   "method": "connect",
   "params": {
     "role": "node",
-    "scopes": [],
     "caps": ["camera", "canvas", "screen", "location", "voice"],
     "commands": ["camera.snap", "canvas.navigate"],
-    "auth": { "token": "node-device-token" },
-    ...
+    "auth": { "token": "node-device-token" }
   }
 }
 ```
 
-After connecting, the node listens for `node.*` RPC calls dispatched by the gateway agent and returns results.
+After connecting, the node listens for `node.*` RPC calls dispatched by the gateway agent and returns results. Approve pending nodes with `openclaw nodes approve <requestId>` (RPC: `node.pair.approve`).
 
 ---
 
 ## See also
 
-- [Gateway remote access](/admin/gateway/remote-access) — accessing the gateway from outside localhost
-- [Gateway authentication](/admin/gateway/authentication) — tokens, passwords, trusted-proxy
-- [Gateway configuration reference](/reference/config) — full config schema
-- [Plugin SDK](/developers/sdk) — building extensions that interact with the gateway
+- [CLI reference](/reference/cli) - the `openclaw gateway call` helper
+- [Gateway configuration reference](/reference/config) - `gateway.http.*`, auth, TLS
+- [Gateway remote access](/admin/gateway/remote-access)
+- [Gateway authentication](/admin/gateway/authentication)
+- [Plugin SDK](/developers/sdk)

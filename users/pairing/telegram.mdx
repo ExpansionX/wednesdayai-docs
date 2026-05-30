@@ -1,12 +1,12 @@
 ---
 title: "Pair Telegram"
-description: "Start chatting with WednesdayAI on Telegram — find your bot and send a message."
+description: "Start chatting with WednesdayAI on Telegram - find your bot and send a message."
 audience: user
 ---
 
 # Pair Telegram
 
-Connecting WednesdayAI on Telegram is the simplest pairing of any channel — there is no QR code to scan. You just find the bot your administrator set up and send it a message.
+Connecting WednesdayAI on Telegram is the simplest pairing of any channel - there is no QR code to scan. You just find the bot your administrator set up and send it a message.
 
 ## What you need
 
@@ -15,46 +15,54 @@ Connecting WednesdayAI on Telegram is the simplest pairing of any channel — th
 
 ## Steps
 
-### 1. Get the bot username from your administrator
+<Steps>
+  <Step title="Get the bot username from your administrator">
+    Your administrator set up a Telegram bot when configuring WednesdayAI. Ask them for the bot's username - it starts with `@` and usually ends in `Bot`.
+  </Step>
 
-Your administrator set up a Telegram bot when configuring WednesdayAI. Ask them for the bot's username — it starts with `@` and ends in `Bot`.
+  <Step title="Open a chat with the bot">
+    In Telegram, tap the search icon and type the bot username. Select it and tap **Start**.
 
-### 2. Open a chat with the bot
+    Or open this link (replace `YourBotName` with the actual username):
 
-In Telegram, tap the search icon and type the bot username. Select it and tap **Start**.
+    ```
+    https://t.me/YourBotName
+    ```
+  </Step>
 
-Or open this link (replace `YourBotName` with the actual username):
+  <Step title="Send your first message">
+    Tap **Start** in the chat, or just type a message. Your AI will respond within a few seconds.
 
-```
-https://t.me/YourBotName
-```
+    That is it - you are connected.
+  </Step>
+</Steps>
 
-### 3. Send your first message
+## Native slash commands
 
-Tap **Start** in the chat, or just type a message. Your AI will respond within a few seconds.
+On Telegram, WednesdayAI commands also appear as **native commands**. Type `/` in the chat and Telegram shows a menu of available commands (such as `/reset`, `/status`, and `/model`) - tap one instead of typing it out. When a command needs a choice, Telegram shows buttons to pick from.
 
-That's it — you're connected.
+Text commands still work too, so you can type `/status` directly if you prefer.
 
 ## Group chats
 
-If your administrator has added the bot to a Telegram group, you can chat with your AI in that group too. To get the AI's attention in a group, either:
+If your administrator has added the bot to a Telegram group, you can chat with your AI there too. In a group the bot stays quiet until you get its attention - either:
 
-- Mention the bot by username: `@YourBotName what is the weather today?`
+- Mention it by username: `@YourBotName what is the weather today?`
 - Reply to one of the bot's previous messages
 
 ## Tips
 
-- **Notifications** — make sure Telegram notifications are enabled so you see replies on your phone.
-- **Multiple devices** — Telegram works across all your devices simultaneously. You can start a conversation on your phone and continue on desktop.
+- **Notifications** - make sure Telegram notifications are enabled so you see replies on your phone.
+- **Multiple devices** - Telegram syncs across all your devices. You can start on your phone and continue on desktop.
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="The bot doesn't respond">
-    Make sure you tapped **Start** before sending a message — Telegram requires this for bots. If you already tapped Start and there's still no reply, ask your administrator to run `openclaw doctor` to check the Telegram channel status.
+  <Accordion title="The bot does not respond">
+    Make sure you tapped **Start** before sending a message - Telegram requires this for bots. If you already tapped Start and there is still no reply, ask your administrator to run `openclaw doctor` to check the Telegram channel status.
   </Accordion>
 
-  <Accordion title="I can't find the bot">
+  <Accordion title="I cannot find the bot">
     Double-check the username with your administrator. Bot usernames are case-insensitive but must match exactly. Try searching without the `@` symbol.
   </Accordion>
 
@@ -63,6 +71,6 @@ If your administrator has added the bot to a Telegram group, you can chat with y
   </Accordion>
 
   <Accordion title="Messages in a group are ignored">
-    In group chats, you need to mention the bot by username or reply to its messages. The bot won't respond to every message in a busy group by default.
+    In group chats you need to mention the bot by username or reply to its messages. It will not respond to every message in a busy group by default.
   </Accordion>
 </AccordionGroup>

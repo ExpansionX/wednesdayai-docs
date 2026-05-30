@@ -8,14 +8,7 @@ audience: developer
 
 WednesdayAI's core is intentionally small. Features that are specific to a use case, platform, or workflow belong in plugins — not in core. This keeps the core stable and the system extensible without requiring a fork.
 
-A plugin is a Node.js package that registers one or more of the following via the plugin SDK:
-
-- **Agent tools** — actions the AI can invoke during a conversation
-- **Hooks** — lifecycle callbacks (transform inputs, capture outputs, react to events)
-- **Channel adapters** — new chat platform integrations
-- **HTTP routes** — custom endpoints on the gateway
-
-This guide builds a plugin with one agent tool. It covers the manifest, the SDK surface, async safety, optional tools, config schema, and local testing.
+A plugin is a Node.js package whose `register(api)` function attaches one or more capabilities through the plugin SDK. This guide builds a plugin with one agent tool. It covers both manifest forms, the SDK surface, async safety, optional tools, config schema, and local testing.
 
 ## Prerequisites
 
@@ -25,16 +18,18 @@ This guide builds a plugin with one agent tool. It covers the manifest, the SDK 
 
 ## Extension points overview
 
-Before writing code, understand where plugins touch the system:
+Before writing code, understand where plugins touch the system. Each capability is attached with a dedicated method on the `OpenClawPluginApi` object passed to your `register` function:
 
-| Extension point | What it owns                                                     | SDK type                |
-| --------------- | ---------------------------------------------------------------- | ----------------------- |
-| Agent tool      | An action the AI can call (search, fetch, compute)               | `AnyAgentTool`          |
-| Hook            | A lifecycle callback (before/after LLM call, context collection) | `PluginHook*`           |
-| Channel adapter | A new chat platform                                              | `ChannelPlugin`         |
-| HTTP route      | A custom endpoint on the gateway                                 | `GatewayRequestHandler` |
+| Extension point | What it owns                                                                     | Register with                |
+| --------------- | ------------------------------------------------------------------------------- | ---------------------------- |
+| Agent tool      | An action the AI can call (search, fetch, compute)                              | `api.registerTool(...)`      |
+| Lifecycle hook  | A typed runtime callback (transform LLM input/output, gate tools, shape context) | `api.on(...)`                |
+| Channel adapter | A new chat platform                                                             | `api.registerChannel(...)`   |
+| HTTP route      | A custom endpoint on the gateway                                                | `api.registerHttpRoute(...)` |
+| Provider        | A model provider and its auth methods                                           | `api.registerProvider(...)`  |
+| Command         | A chat command that bypasses the LLM                                            | `api.registerCommand(...)`   |
 
-Each is registered via a corresponding `api.register*()` method on the `OpenClawPluginApi` object passed to your `register` function.
+This guide builds a tool. For the other extension points, see [Agent tools](/developers/agent-tools), [Hooks](/developers/hooks), [Channel adapters](/developers/channel-adapters), and the [Plugin SDK reference](/developers/sdk) (which also covers providers, commands, services, gateway methods, session-store adapters, and web-search providers).
 
 ## Step 1: Scaffold the plugin
 
@@ -77,7 +72,7 @@ Create `tsconfig.json`:
 
 ## Step 2: Write the manifest
 
-Create `openclaw.plugin.json` at the plugin root. This file is **required** — the runtime will not load the plugin without it.
+Create `openclaw.plugin.json` at the plugin root. This file is **required** — the runtime validates plugin config against it **without executing your code**, so a missing or invalid manifest blocks loading.
 
 The manifest is plain JSON (not JSON5):
 
@@ -114,6 +109,14 @@ The manifest is plain JSON (not JSON5):
 - `additionalProperties: false` ensures typos in user config are caught, not silently ignored.
 - The manifest is plain JSON — do not add comments or trailing commas.
 - Declaring a field in `required` means the runtime rejects the plugin config at load time if the field is absent. If you also guard for a missing value inside `execute()`, that guard is belt-and-suspenders for deployments where config validation may be bypassed (e.g. direct API calls). Both are fine to have together.
+
+<Note>
+  **`openclaw.plugin.json` vs the `package.json` `"openclaw"` key.** These are two different things.
+  `openclaw.plugin.json` is the **manifest** — it carries `id` + `configSchema` and drives config
+  validation. The `package.json` `"openclaw"` key is used for **workspace/pack discovery** (the `id`,
+  or an `extensions` array for a multi-plugin pack). A published plugin typically ships both. See the
+  [manifest reference](/developers/plugins/manifest).
+</Note>
 
 ## Step 3: Write the plugin entry point
 
@@ -162,7 +165,7 @@ The `register` function may be synchronous or async. Use async if you need to pe
 
 ```typescript
 export default function register(api: OpenClawPluginApi): void {
-  // ❌ Synchronous I/O blocks the event loop during startup
+  // Synchronous I/O blocks the event loop during startup
   const config = JSON.parse(fs.readFileSync("./data.json", "utf8"));
   api.registerTool({ ... });
 }
@@ -172,7 +175,7 @@ export default function register(api: OpenClawPluginApi): void {
 
 ```typescript
 export default async function register(api: OpenClawPluginApi): Promise<void> {
-  // ✅ Async I/O during startup — does not block the event loop
+  // Async I/O during startup — does not block the event loop
   const config = JSON.parse(await fs.promises.readFile("./data.json", "utf8"));
   api.registerTool({ ... });
 }
@@ -194,7 +197,7 @@ api.registerTool(
       /* ... */
     },
   },
-  { optional: true }, // ← user must explicitly enable this tool
+  { optional: true }, // user must explicitly enable this tool
 );
 ```
 
@@ -262,7 +265,7 @@ openclaw plugins list
 Expected output from `openclaw plugins list`:
 
 ```text
-my-tool  1.0.0  ✓ loaded
+my-tool  1.0.0  loaded
 ```
 
 ## Step 7: Test it
@@ -277,12 +280,26 @@ journalctl --user -u openclaw-gateway -f | grep my_tool
 
 Expected: a log line showing the tool being called with your params and a successful return.
 
+## Other extension points
+
+Once you are comfortable registering a tool, the same `register(api)` entry attaches everything else:
+
+- **Lifecycle hooks** — `api.on(name, handler)` to transform LLM input/output, gate tool calls, or shape context. See [Hooks](/developers/hooks).
+- **Channel adapters** — `api.registerChannel(...)` to add a new messaging platform. See [Channel adapters](/developers/channel-adapters).
+- **HTTP routes and gateway methods** — `api.registerHttpRoute(...)` / `api.registerGatewayMethod(...)`.
+- **Commands and CLI** — `api.registerCommand(...)` for chat commands that bypass the LLM; `api.registerCli(...)` for CLI subcommands.
+- **Services** — `api.registerService(...)` for start/stop background work.
+- **Providers, session stores, web search** — `api.registerProvider(...)`, `api.registerSessionStoreAdapter(...)`, `api.registerWebSearchProvider(...)`.
+
+The full surface is documented in the [Plugin SDK reference](/developers/sdk).
+
 ---
 
 ## What's next
 
-- [Plugin manifest reference](/reference/plugin-manifest) — all manifest fields and their effects
-- [Plugin SDK reference](/reference/plugin-sdk) — full exported surface with types
-- [Writing a hook](/developers/hooks) — lifecycle callbacks for context, LLM input/output, and model call events
-- [Writing a channel adapter](/developers/channel-adapters) — add a new chat platform
-- [Publishing a plugin](/developers/plugins/publishing) — how the managed plugin lifecycle works
+- [Plugin manifest reference](/developers/plugins/manifest) — all manifest fields and their effects
+- [Plugin SDK reference](/developers/sdk) — full exported surface with types
+- [Agent tools](/developers/agent-tools) — go deeper on the tool surface
+- [Hooks](/developers/hooks) — lifecycle callbacks for context, LLM input/output, and model call events
+- [Channel adapters](/developers/channel-adapters) — add a new chat platform
+- [Publishing a plugin](/developers/plugins/publishing) — the managed plugin lifecycle

@@ -1,0 +1,210 @@
+---
+title: "iMessage"
+description: "Connect iMessage to WednesdayAI — BlueBubbles (recommended) or the legacy imsg CLI, with access policies, attachments, and remote-Mac setups."
+audience: admin
+---
+
+# iMessage
+
+WednesdayAI connects to iMessage on macOS in two ways. **BlueBubbles is the recommended path for new setups** — it has a richer REST API and easier setup. The legacy `imsg` CLI integration still works but may be removed in a future release.
+
+<CardGroup cols={2}>
+  <Card title="BlueBubbles (recommended)" icon="message-circle">
+    macOS REST server with reactions, edits, effects, and group management.
+  </Card>
+  <Card title="imsg (legacy)" icon="terminal">
+    JSON-RPC over stdio against the local Messages database.
+  </Card>
+</CardGroup>
+
+Both require a Mac signed in to Messages. The gateway can run on the same Mac or on Linux, talking to a Mac over the network.
+
+## BlueBubbles (recommended)
+
+BlueBubbles is a bundled plugin that talks to the [BlueBubbles macOS server](https://bluebubbles.app) over HTTP. Incoming messages arrive via webhooks; replies, typing indicators, read receipts, and tapbacks are REST calls.
+
+<Note>
+Tested on macOS Sequoia (15). macOS Tahoe (26) works, but message **edit** is currently broken and group-icon updates may report success without syncing.
+</Note>
+
+### Setup
+
+<Steps>
+  <Step title="Install and configure the BlueBubbles server">
+    Install the server on your Mac from [bluebubbles.app/install](https://bluebubbles.app/install). In its settings, enable the web API and set a password.
+  </Step>
+  <Step title="Configure WednesdayAI">
+    Run `openclaw onboard` and select BlueBubbles, or configure manually:
+
+    ```json5
+    {
+      channels: {
+        bluebubbles: {
+          enabled: true,
+          serverUrl: "http://192.168.1.100:1234",
+          password: "example-password",
+          webhookPath: "/bluebubbles-webhook",
+          dmPolicy: "pairing",
+        },
+      },
+    }
+    ```
+
+    Or via CLI: `openclaw channels add bluebubbles --http-url http://192.168.1.100:1234 --password <password>`
+  </Step>
+  <Step title="Point BlueBubbles webhooks at the gateway">
+    Set the webhook target to your gateway, e.g. `https://your-gateway-host:3000/bluebubbles-webhook?password=<password>`.
+  </Step>
+  <Step title="Start the gateway and approve pairing">
+    ```bash
+    openclaw gateway run
+    openclaw pairing list bluebubbles
+    openclaw pairing approve bluebubbles <CODE>
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Always set a webhook password. WednesdayAI rejects BlueBubbles webhook requests that do not include a matching `password`/`guid` (query param or `x-password` header), and checks it before parsing the body. Requests from localhost are also trusted — if you proxy the gateway, require auth at the proxy and set `gateway.trustedProxies`.
+</Warning>
+
+### Access control
+
+```json5
+{
+  channels: {
+    bluebubbles: {
+      dmPolicy: "pairing",          // pairing | allowlist | open | disabled
+      allowFrom: ["+15555550123", "user@example.com"],
+      groupPolicy: "allowlist",     // open | allowlist | disabled
+      groupAllowFrom: ["+15555550123"],
+      groups: {
+        "*": { requireMention: true },
+        "iMessage;-;chat123": { requireMention: false },
+      },
+    },
+  },
+}
+```
+
+DM allowlist entries can be handles, emails, E.164 numbers, or chat targets (`chat_id:*`, `chat_guid:*`). Mention gating uses `agents.list[].groupChat.mentionPatterns` (or `messages.groupChat.mentionPatterns`); authorised senders bypass it for control commands.
+
+### Advanced actions
+
+BlueBubbles supports tapback reactions, edit, unsend, reply threading, message effects, and group management — each toggled under `channels.bluebubbles.actions`:
+
+```json5
+{
+  channels: {
+    bluebubbles: {
+      actions: {
+        reactions: true,
+        edit: true,          // macOS 13+, broken on macOS 26 Tahoe
+        unsend: true,
+        reply: true,
+        sendWithEffect: true,
+        renameGroup: true,
+        sendAttachment: true,
+      },
+    },
+  },
+}
+```
+
+WednesdayAI auto-hides actions known to be broken on the server's macOS version. Reactions require the BlueBubbles private API. Voice memos: send `asVoice: true` with MP3 or CAF audio (BlueBubbles converts MP3 to CAF).
+
+### Media and delivery
+
+- Inbound attachments are downloaded into the media cache; cap with `channels.bluebubbles.mediaMaxMb` (default 8 MB).
+- Outbound text chunks at `channels.bluebubbles.textChunkLimit` (default 4000 chars).
+- Outbound **local** file sends are denied unless you allowlist directories in `channels.bluebubbles.mediaLocalRoots`.
+- Prefer `chat_guid:iMessage;-;+15555550123` for stable routing. Direct handles also work; sending to a handle with no existing DM creates one (requires the BlueBubbles Private API).
+- Streaming replies require `channels.bluebubbles.blockStreaming: true` (off by default).
+
+### Keeping Messages.app alive on headless Macs
+
+On always-on VMs, Messages.app can go idle and stop delivering events. A LaunchAgent that runs an AppleScript every 5 minutes to touch the scripting interface keeps it responsive. The first run triggers macOS Automation prompts — approve them in the same user session that runs the LaunchAgent.
+
+## Legacy: imsg CLI
+
+<Warning>
+The `imsg` integration is legacy and may be removed. Use BlueBubbles for new deployments.
+</Warning>
+
+The gateway spawns `imsg rpc` and talks to it over JSON-RPC on stdio — no separate daemon or port.
+
+```bash
+brew install steipete/tap/imsg
+imsg rpc --help
+```
+
+```json5
+{
+  channels: {
+    imessage: {
+      enabled: true,
+      cliPath: "/usr/local/bin/imsg",
+      dbPath: "/Users/<you>/Library/Messages/chat.db",
+      dmPolicy: "pairing",        // pairing | allowlist | open | disabled
+    },
+  },
+}
+```
+
+macOS permissions are required for the process context that runs `imsg`: **Full Disk Access** (Messages DB) and **Automation** (to send). For headless setups, run an interactive command once in the same context to trigger the prompts:
+
+```bash
+imsg chats --limit 1
+```
+
+### Remote Mac over SSH
+
+`imsg` only needs a stdio-compatible `cliPath`, so point it at a wrapper that SSHes to a remote Mac:
+
+```bash
+#!/usr/bin/env bash
+exec ssh -T bot@mac-mini.tailnet-1234.ts.net imsg "$@"
+```
+
+```json5
+{
+  channels: {
+    imessage: {
+      enabled: true,
+      cliPath: "~/.openclaw/scripts/imsg-ssh",
+      remoteHost: "bot@mac-mini.tailnet-1234.ts.net", // for SCP attachment fetches
+      includeAttachments: true,
+      dbPath: "/Users/bot/Library/Messages/chat.db",
+    },
+  },
+}
+```
+
+`remoteHost` must be `host` or `user@host` (no spaces or SSH options). SCP uses strict host-key checking, so populate `~/.ssh/known_hosts` on the gateway host first. Attachment paths are validated against `attachmentRoots` / `remoteAttachmentRoots` (default `/Users/*/Library/Messages/Attachments`).
+
+iMessage has no native mention metadata, so group mention gating relies entirely on `mentionPatterns`; with none configured, mention gating cannot be enforced.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="DMs are ignored">
+    Check `dmPolicy`, `allowFrom`, and pending pairings (`openclaw pairing list <bluebubbles|imessage>`).
+  </Accordion>
+  <Accordion title="Group messages are ignored">
+    Check `groupPolicy`, `groupAllowFrom`, the `groups` allowlist, and mention pattern configuration.
+  </Accordion>
+  <Accordion title="BlueBubbles: typing/read events stopped">
+    Verify the webhook path matches `channels.bluebubbles.webhookPath` and check the BlueBubbles webhook logs.
+  </Accordion>
+  <Accordion title="imsg not found or RPC unsupported">
+    Run `imsg rpc --help` and `openclaw channels status --probe`. If probe reports RPC unsupported, update `imsg`.
+  </Accordion>
+  <Accordion title="Remote attachments fail">
+    Check `remoteHost`, `remoteAttachmentRoots`, SSH/SCP key auth from the gateway host, and that the relay host key is in `~/.ssh/known_hosts`.
+  </Accordion>
+</AccordionGroup>
+
+## Related
+
+- [Channel setup](/admin/channels)
+- [Channel troubleshooting](/admin/troubleshooting)
